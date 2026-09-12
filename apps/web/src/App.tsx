@@ -4,6 +4,7 @@ import { AuthScreen } from "./components/AuthScreen";
 import { Sidebar } from "./components/Sidebar";
 import { TaskList } from "./components/TaskList";
 import { TaskDetail } from "./components/TaskDetail";
+import { WindowControls } from "./components/WindowControls";
 
 export default function App() {
   const phase = useApp((s) => s.phase);
@@ -13,21 +14,28 @@ export default function App() {
     void actions.boot();
   }, []);
 
-  if (phase === "boot") {
-    return (
-      <div className="flex h-full items-center justify-center" data-testid="boot-splash">
-        <div className="flex items-center gap-3 text-zinc-400">
-          <Logo className="size-8 animate-pulse text-blue-500" />
-          <span className="text-sm tracking-widest">PLANWAVE</span>
-        </div>
+  return (
+    <>
+      <WindowControls />
+      {phase === "boot" && <BootSplash />}
+      {phase === "auth" && <AuthScreen />}
+      {phase === "ready" && <MainLayout sidebarOpen={sidebarOpen} />}
+    </>
+  );
+}
+
+function BootSplash() {
+  return (
+    <div className="flex h-full items-center justify-center" data-testid="boot-splash">
+      <div className="flex items-center gap-3 text-zinc-400">
+        <Logo className="size-8 animate-pulse text-blue-500" />
+        <span className="text-sm tracking-widest">PLANWAVE</span>
       </div>
-    );
-  }
+    </div>
+  );
+}
 
-  if (phase === "auth") {
-    return <AuthScreen />;
-  }
-
+function MainLayout({ sidebarOpen }: { sidebarOpen: boolean }) {
   return (
     <div className="flex h-full">
       {/* 移动端遮罩 */}

@@ -2,6 +2,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { Button, Input } from "@heroui/react";
 import { actions, useApp, type ViewKind } from "../state/store";
 import { filterTasks } from "../lib/filters";
+import { isDesktopApp } from "../lib/platform";
 import { TaskRow } from "./TaskRow";
 
 function viewTitle(view: ViewKind): string {
@@ -38,6 +39,8 @@ export function TaskList() {
 
   return (
     <>
+      {/* 桌面端自绘标题栏：内容列顶部拖拽区（Windows 窗口控制按钮落在这里右上） */}
+      {isDesktopApp && <div data-tauri-drag-region className="h-9 shrink-0" aria-hidden />}
       <div className="flex items-center gap-2 px-6 pt-5">
         <button
           className="rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-200/60 md:hidden dark:hover:bg-zinc-800"

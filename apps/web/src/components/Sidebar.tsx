@@ -3,6 +3,7 @@ import { Button, Input } from "@heroui/react";
 import type { ProjectRecord } from "../types";
 import { actions, useApp, type ViewKind } from "../state/store";
 import { countTasks } from "../lib/filters";
+import { isDesktopApp } from "../lib/platform";
 import { Logo } from "../App";
 
 const SMART_LISTS: { key: "today" | "upcoming" | "all" | "trash"; label: string }[] = [
@@ -46,6 +47,8 @@ export function Sidebar() {
 
   return (
     <aside className="flex w-full shrink-0 flex-col gap-1 p-4 md:w-64">
+      {/* 桌面端自绘标题栏：侧栏顶部拖拽区（macOS 红绿灯落在这里），背景与侧栏一致 */}
+      {isDesktopApp && <div data-tauri-drag-region className="-mx-4 -mt-4 h-9 shrink-0" aria-hidden />}
       <div className="mb-4 flex items-center gap-2 px-2 pt-2">
         <Logo className="size-6 text-blue-500" />
         <span className="text-sm font-semibold tracking-widest text-zinc-500 dark:text-zinc-400">

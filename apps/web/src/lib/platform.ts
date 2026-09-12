@@ -15,6 +15,13 @@ declare global {
 export const isTauri =
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
+/** Tauri 桌面端（需要自绘标题栏拖拽区）；移动端有系统 UI，不走这套。 */
+export const isDesktopApp =
+  isTauri && !/Android|iPhone|iPad/i.test(navigator.userAgent);
+
+/** Tauri Windows 端：无原生标题栏（decorations 关闭），窗口控制按钮由前端自绘。 */
+export const isWindowsApp = isDesktopApp && /Windows/i.test(navigator.userAgent);
+
 const API_BASE_KEY = "planwave.api_base";
 
 /** 未做任何覆盖时的默认地址。 */

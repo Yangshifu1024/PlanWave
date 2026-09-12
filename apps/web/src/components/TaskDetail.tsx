@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Button, Input, ListBox, ListBoxItem, Select, Switch, TextArea } from "@heroui/react";
 import type { TaskRecord } from "../types";
 import { actions, useApp } from "../state/store";
+import { isDesktopApp } from "../lib/platform";
 import { fromDateInput, toDateInput } from "../lib/dates";
 
 const PRIORITIES: { value: number; label: string }[] = [
@@ -75,6 +76,7 @@ export function TaskDetail() {
   );
 }
 
+
 function DetailBody({
   task,
   projects,
@@ -100,7 +102,15 @@ function DetailBody({
   };
 
   return (
-    <div className="flex h-full flex-col gap-4 overflow-y-auto p-5">
+    <div className="relative flex h-full flex-col gap-4 overflow-y-auto p-5">
+      {/* 桌面端自绘标题栏：详情列顶部拖拽区（Windows 窗口控制按钮落在这上方），滚动时吸顶 */}
+      {isDesktopApp && (
+        <div
+          data-tauri-drag-region
+          className="sticky top-0 z-10 -mx-5 -mt-5 h-9 shrink-0 bg-white dark:bg-zinc-900"
+          aria-hidden
+        />
+      )}
       <div className="flex items-center justify-between">
         <button
           onClick={onClose}
