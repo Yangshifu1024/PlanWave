@@ -50,7 +50,16 @@
    }
    ```
 
-   改完 `systemctl reload caddy`。漏掉 `uri strip_prefix /api` 会在注册时报 404（Axum 收到的是 `/api/auth/register`）。
+   改完 `systemctl reload caddy`。两个高频踩坑点：
+
+   - **`/api` 前缀必须剥掉**（漏了 `uri strip_prefix /api` 会在注册时报 404——Axum 收到的是 `/api/auth/register`）。
+   - **静态资源兜底的 `handle` 后面不能写 `/`**：`handle /` 只精确匹配根路径，`/assets/*` 等会落空——Caddy 对无规则请求返回 200 + 空 body + 无 Content-Type，浏览器直接拒绝加载 JS（控制台报 `Failed to load module script ... MIME type of ""`，页面白屏）。必须是裸 `handle` 作兜底。
+
+   验证静态资源 MIME 正常：
+
+   ```bash
+   curl -sI https://你的域名/favicon.svg | grep -i content-type   # 期望 image/svg+xml
+   ```
 
 6. **启动**：
 
