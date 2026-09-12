@@ -128,7 +128,7 @@ jobs:
           name: web-dist
           path: apps/web/dist
       - name: Tauri build（NSIS）
-        run: pnpm --filter @planwave/client exec tauri build --config tauri.ci.conf.json
+        run: pnpm --filter @planwave/client exec tauri build --config tauri.ci.conf.json --bundles nsis
       - uses: actions/upload-artifact@v4
         with:
           name: client-windows
@@ -159,7 +159,7 @@ jobs:
           name: web-dist
           path: apps/web/dist
       - name: Tauri build（AppImage + deb）
-        run: pnpm --filter @planwave/client exec tauri build --config tauri.ci.conf.json
+        run: pnpm --filter @planwave/client exec tauri build --config tauri.ci.conf.json --bundles appimage,deb
       - uses: actions/upload-artifact@v4
         with:
           name: client-linux
@@ -217,7 +217,7 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: pnpm --filter @planwave/client exec tauri build --target universal-apple-darwin
+        run: pnpm --filter @planwave/client exec tauri build --target universal-apple-darwin --config tauri.ci.conf.json --bundles dmg
       - uses: actions/upload-artifact@v4
         with:
           name: client-macos

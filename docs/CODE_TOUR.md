@@ -81,7 +81,7 @@ v2 的关键决定：**客户端数据层只有一种实现**——同步语义�
 |---|---|
 | `src/lib.rs` | 窗口 + 通知插件。**不含任何存储逻辑**——数据层在前端 WASM 里，壳只负责把 UI 装进各端 WebView |
 | `tauri.conf.json` | `frontendDist` 指向 `../web/dist`；`beforeBuildCommand` 先 `pnpm build:wasm` 再构建前端 |
-| `gen/android/` | Android 工程（`tauri android init` 生成，含国内镜像配置，已入库） |
+| `gen/android/` | Android 工程（`tauri android init` 生成，已入库）。国内镜像默认关闭，本地构建前设 `PLANWAVE_CN_MIRROR=1` 启用阿里云 Maven 加速 |
 | `gen/ios/` | iOS 工程由 macOS runner 在 release.yml 里生成（Windows 无法 init） |
 
 ### 其他

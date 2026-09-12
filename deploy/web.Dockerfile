@@ -11,9 +11,11 @@ RUN rustup target add wasm32-unknown-unknown \
 WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
 COPY crates crates
-# cargo 解析 workspace 需要所有成员的清单存在（只构建 sync-wasm，不编译它们）
+# cargo 解析 workspace 需要所有成员的清单存在（只构建 sync-wasm，不编译它们）；
+# client 清单声明了 [lib]，metadata 还会校验 src/lib.rs 存在
 COPY apps/server/Cargo.toml apps/server/Cargo.toml
-COPY apps/client/Cargo.toml apps/client/Cargo.toml
+COPY apps/client/Cargo.toml apps/client/build.rs apps/client/
+COPY apps/client/src apps/client/src
 RUN wasm-pack build crates/sync-wasm --target web \
     --out-dir /wasm-pkg --out-name planwave
 
