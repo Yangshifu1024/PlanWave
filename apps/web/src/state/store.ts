@@ -5,8 +5,8 @@
 
 import { create } from "zustand";
 import type { ProjectRecord, TaskRecord } from "../types";
-import { isTauri } from "../lib/platform";
-import { ensureTypedClient, hasTokens } from "../wasm/client";
+import { isTauri, applyServerAddress } from "../lib/platform";
+import { ensureTypedClient, hasTokens, peekClient } from "../wasm/client";
 import { requestReminderPermission, rescheduleReminders } from "../lib/reminders";
 
 export type ViewKind =
@@ -119,7 +119,8 @@ export const actions = {
     startPolling();
   },
 
-  async register(username: string, password: string): Promise<void> {
+  async register(username: string, password: string, server?: string): Promise<void> {
+    if (server !== undefined && (await switchServer(server))) return; // 已重载页面
     const client = await ensureTypedClient();
     try {
       await client.register(username, password, deviceId(), deviceDesc());
@@ -129,7 +130,8 @@ export const actions = {
     }
   },
 
-  async login(username: string, password: string): Promise<void> {
+  async login(username: string, password: string, server?: string): Promise<void> {
+    if (server !== undefined && (await switchServer(server))) return; // 已重载页面
     try {
       const client = await ensureTypedClient();
       await client.login(username, password, deviceId(), deviceDesc());
@@ -279,6 +281,26 @@ export const actions = {
 async function afterMutate(): Promise<void> {
   scheduleAutoSync();
   await actions.reload();
+}
+
+/**
+ * 切换服务器：换地址即换数据空间——清 token、清本地库，重载页面重建客户端。
+ * WASM 客户端是单例，构造后地址不可更换；返回是否发生了切换。
+ */
+async function switchServer(base: string): Promise<boolean> {
+  if (!applyServerAddress(base)) return false;
+  localStorage.removeItem("planwave.tokens");
+  const constructed = peekClient();
+  if (constructed) {
+    await constructed.clear_local();
+  } else {
+    await new Promise<void>((resolve) => {
+      const req = indexedDB.deleteDatabase("planwave");
+      req.onsuccess = req.onerror = req.onblocked = () => resolve();
+    });
+  }
+  location.reload();
+  return true;
 }
 
 let autoSyncTimer: ReturnType<typeof setTimeout> | null = null;

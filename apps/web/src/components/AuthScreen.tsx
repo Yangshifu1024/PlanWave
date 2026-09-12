@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Button, Input } from "@heroui/react";
 import { actions, useApp } from "../state/store";
+import { DEFAULT_API_BASE, getStoredApiBase } from "../lib/platform";
 import { Logo } from "../App";
 
 /** 登录 / 首次初始化（单账号注册）界面。 */
@@ -9,19 +10,25 @@ export function AuthScreen() {
   const authError = useApp((s) => s.authError);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  // 服务器地址运行时可改（Tauri 各端没有「同源」概念，靠这里指向自己的实例）
+  const [server, setServer] = useState(
+    () => getStoredApiBase() ?? DEFAULT_API_BASE,
+  );
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     document.getElementById("auth-username")?.focus();
   }, []);
 
+  const serverInvalid = server.trim() !== "" && !/^https?:\/\//i.test(server.trim());
+
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (busy) return;
+    if (busy || serverInvalid) return;
     setBusy(true);
     try {
-      if (hasAccount) await actions.login(username, password);
-      else await actions.register(username, password);
+      if (hasAccount) await actions.login(username, password, server.trim());
+      else await actions.register(username, password, server.trim());
     } finally {
       setBusy(false);
     }
@@ -59,6 +66,18 @@ export function AuthScreen() {
             autoComplete={hasAccount ? "current-password" : "new-password"}
             fullWidth
           />
+          <Input
+            data-testid="auth-server"
+            value={server}
+            onChange={(e) => setServer(e.target.value)}
+            placeholder="服务器地址（自托管实例）"
+            type="url"
+            className="text-xs"
+            fullWidth
+          />
+          {serverInvalid && (
+            <p className="text-xs text-red-500">地址需以 http:// 或 https:// 开头</p>
+          )}
         </div>
 
         {authError && (
@@ -69,7 +88,7 @@ export function AuthScreen() {
 
         <Button
           type="submit"
-          isDisabled={busy || !username || password.length < 8}
+          isDisabled={busy || !username || password.length < 8 || serverInvalid}
           data-testid="auth-submit"
           fullWidth
         >

@@ -24,6 +24,8 @@ test.describe.serial("PlanWave Web E2E", () => {
     // 全新服务端：首次进入应显示注册（单账号初始化）
     await page.goto("/");
     await expect(page.getByTestId("auth-username")).toBeVisible({ timeout: 15_000 });
+    // 服务器地址运行时可配置（Tauri 端靠它指向自己的实例）；此处保持默认即可
+    await expect(page.getByTestId("auth-server")).toBeVisible();
     await page.getByTestId("auth-username").fill(USER);
     await page.getByTestId("auth-password").fill(PASS);
     await page.getByTestId("auth-submit").click();

@@ -3,7 +3,7 @@
 
 import init from "./pkg/planwave.js";
 import { PlanWaveClient } from "./pkg/planwave.js";
-import { API_BASE } from "../lib/platform";
+import { getApiBase } from "../lib/platform";
 import type { ProjectRecord, TaskRecord } from "../types";
 
 export type { PlanWaveClient };
@@ -11,14 +11,20 @@ export type { PlanWaveClient };
 let instance: PlanWaveClient | null = null;
 let initPromise: Promise<PlanWaveClient> | null = null;
 
+/** 已构造的客户端（可能为 null：构造发生在首次登录/注册时）。 */
+export function peekClient(): PlanWaveClient | null {
+  return instance;
+}
+
 /** 获取（并按需初始化）WASM 同步客户端。 */
 export async function ensureClient(): Promise<PlanWaveClient> {
   if (instance) return instance;
   if (!initPromise) {
     initPromise = (async () => {
       await init();
-      // 注意：Rust 侧 new 是 async 关联函数（wasm-bindgen 的 async constructor 已弃用）
-      instance = await PlanWaveClient.new(API_BASE);
+      // 地址在构造时确定（登录屏可覆盖）；Rust 侧 new 是 async 关联函数
+      // （wasm-bindgen 的 async constructor 已弃用）
+      instance = await PlanWaveClient.new(getApiBase());
       return instance;
     })();
   }
