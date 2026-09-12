@@ -36,10 +36,5 @@ RUN pnpm --filter @planwave/web build
 
 # ---- 阶段 3：nginx 托管 + /api 反代 ----
 FROM nginx:1.27-alpine
-# 官方镜像会对 /etc/nginx/templates/*.template 做 envsubst 渲染到 conf.d/，
-# 只替换容器内已定义的环境变量（$http_upgrade 等 nginx 变量不受影响）
-COPY deploy/web.nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
 EXPOSE 80
-# /api 反代目标（docker compose 网络内的服务名）
-ENV PLANWAVE_API_UPSTREAM="server:8787"
