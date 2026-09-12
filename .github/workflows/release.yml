@@ -128,7 +128,7 @@ jobs:
           name: web-dist
           path: apps/web/dist
       - name: Tauri build（NSIS）
-        run: pnpm --filter @planwave/client exec tauri build
+        run: pnpm --filter @planwave/client exec tauri build --config tauri.ci.conf.json
       - uses: actions/upload-artifact@v4
         with:
           name: client-windows
@@ -159,7 +159,7 @@ jobs:
           name: web-dist
           path: apps/web/dist
       - name: Tauri build（AppImage + deb）
-        run: pnpm --filter @planwave/client exec tauri build
+        run: pnpm --filter @planwave/client exec tauri build --config tauri.ci.conf.json
       - uses: actions/upload-artifact@v4
         with:
           name: client-linux
@@ -259,7 +259,7 @@ jobs:
           if [ -n "$TAURI_ANDROID_KEYSTORE_PASSWORD" ]; then
             echo -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode -o "$TAURI_ANDROID_KEYSTORE_PATH"
           fi
-          pnpm --filter @planwave/client exec tauri android build --apk
+          pnpm --filter @planwave/client exec tauri android build --apk --config tauri.ci.conf.json
       - uses: actions/upload-artifact@v4
         with:
           name: client-android
@@ -319,7 +319,7 @@ jobs:
         if: env.IOS_CERTIFICATE != ''
         env:
           IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
-        run: pnpm --filter @planwave/client exec tauri ios build --export-method ad-hoc
+        run: pnpm --filter @planwave/client exec tauri ios build --export-method ad-hoc --config tauri.ci.conf.json
       # 未配置签名 Secrets 时给出未签名构建说明，不出 ipa
       - name: 未配置 iOS 签名提示
         if: env.IOS_CERTIFICATE == ''

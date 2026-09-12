@@ -1,4 +1,4 @@
-package com.planwave.app
+package com.planwave.todo
 
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge
