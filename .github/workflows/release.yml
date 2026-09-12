@@ -338,15 +338,15 @@ jobs:
     needs: [docker-server, docker-web, desktop-windows, desktop-linux, desktop-macos, android]
     steps:
       - uses: actions/checkout@v4
+      # 只取客户端产物（client-*）；buildx 自动上传的 *.dockerbuild 构建记录
+      # 不需要，且全量下载在某些 artifact 上会反复重试失败
       - uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          pattern: client-*
+          merge-multiple: true
+          path: release
       - name: 整理产物
-        run: |
-          mkdir -p release
-          find artifacts -type f \( -name "*.exe" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.dmg" -o -name "*.apk" \) \
-            -exec cp {} release/ \;
-          ls -la release/
+        run: ls -la release/
       - name: 上传到 Release
         uses: softprops/action-gh-release@v2
         with:
