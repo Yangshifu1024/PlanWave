@@ -303,7 +303,7 @@ impl Store for MySqlStore {
                 op: Op {
                     op_id,
                     device_id,
-                    lamport: lamport as u64,
+                    lamport,
                     entity_id,
                     patch,
                     client_time_ms,
