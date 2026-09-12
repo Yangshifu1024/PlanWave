@@ -237,7 +237,8 @@ impl Store for MySqlStore {
                 }
                 Patch::Task(p) => {
                     let row: Option<TaskRow> = sqlx::query_as(
-                        "SELECT id, project_id, title, notes, due_date, priority, completed, labels, sort_order, deleted
+                        // labels 列是 JSON 类型：CAST 成 CHAR 才能按 String 解码（sqlx 类型兼容规则）
+                        "SELECT id, project_id, title, notes, due_date, priority, completed, CAST(labels AS CHAR) AS labels, sort_order, deleted
                          FROM tasks WHERE id = ? FOR UPDATE",
                     )
                     .bind(&op.entity_id)
@@ -282,7 +283,8 @@ impl Store for MySqlStore {
 
     async fn pull(&self, since: u64, limit: u32) -> StoreResult<(Vec<SequencedOp>, u64)> {
         let rows: Vec<(i64, String, String, i64, String, String, i64)> = sqlx::query_as(
-            "SELECT seq, op_id, device_id, lamport, entity_id, patch, client_time_ms
+            // patch 列是 JSON 类型：CAST 成 CHAR 才能按 String 解码（sqlx 类型兼容规则）
+            "SELECT seq, op_id, device_id, lamport, entity_id, CAST(patch AS CHAR) AS patch, client_time_ms
              FROM ops WHERE seq > ? ORDER BY seq LIMIT ?",
         )
         .bind(since as i64)
