@@ -10,9 +10,17 @@ function row(page: Page, title: string) {
   return page.locator(`[data-testid="task-row"][data-task-title="${title}"]`);
 }
 
+/** 等待服务器地址探测通过（凭据输入解锁的前置条件）。 */
+async function waitServerChecked(page: Page): Promise<void> {
+  await expect(page.getByTestId("server-check")).toContainText("服务器版本", {
+    timeout: 15_000,
+  });
+}
+
 async function login(page: Page): Promise<void> {
   await page.goto("/");
-  await expect(page.getByTestId("auth-username")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("auth-server")).toBeVisible({ timeout: 15_000 });
+  await waitServerChecked(page);
   await page.getByTestId("auth-username").fill(USER);
   await page.getByTestId("auth-password").fill(PASS);
   await page.getByTestId("auth-submit").click();
@@ -23,9 +31,9 @@ test.describe.serial("PlanWave Web E2E", () => {
   test("首次注册 + 项目/任务/详情/回收站基础流", async ({ page }) => {
     // 全新服务端：首次进入应显示注册（单账号初始化）
     await page.goto("/");
-    await expect(page.getByTestId("auth-username")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("auth-server")).toBeVisible({ timeout: 15_000 });
     // 服务器地址运行时可配置（Tauri 端靠它指向自己的实例）；此处保持默认即可
-    await expect(page.getByTestId("auth-server")).toBeVisible();
+    await waitServerChecked(page);
     await page.getByTestId("auth-username").fill(USER);
     await page.getByTestId("auth-password").fill(PASS);
     await page.getByTestId("auth-submit").click();

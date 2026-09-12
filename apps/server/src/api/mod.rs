@@ -14,6 +14,7 @@ use tower_http::trace::TraceLayer;
 pub fn build_router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
+        .route("/about", get(about))
         .route("/auth/status", get(auth_api::status))
         .route("/auth/register", post(auth_api::register))
         .route("/auth/login", post(auth_api::login))
@@ -27,4 +28,11 @@ pub fn build_router(state: AppState) -> Router {
 
 async fn health() -> axum::Json<serde_json::Value> {
     axum::Json(serde_json::json!({ "status": "ok" }))
+}
+
+/// 服务器自述：客户端登录屏用 `planwave-server` 键名校验地址指向的是否为本服务。
+async fn about() -> axum::Json<serde_json::Value> {
+    axum::Json(serde_json::json!({
+        "planwave-server": env!("CARGO_PKG_VERSION"),
+    }))
 }
