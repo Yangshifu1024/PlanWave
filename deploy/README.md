@@ -2,12 +2,14 @@
 
 ## 组成
 
-- `planwave-server` 镜像：Rust 同步服务端（多阶段构建，容器内编译）
-- `planwave-web` 镜像：前端静态资源（含 WASM 数据层）+ nginx（SPA 托管、`/api` 反代）；容器只监听 80，**默认仅绑定宿主回环地址**
-- 宿主全局 Caddy：继续占用 80/443、终结 TLS，把域名反代到 web 容器
+- `planwave-server` 镜像：Rust 同步服务端（多阶段构建，容器内编译），绑宿主回环 `127.0.0.1:8081`
+- `planwave-web` 镜像：前端静态资源（含 WASM 数据层）+ nginx 默认配置纯托管，绑宿主回环 `127.0.0.1:8080`
+- 宿主全局 Caddy：继续占用 80/443、终结 TLS，**按路径分流并剥掉 `/api` 前缀**：
+  - `/api/*` → 剥前缀后反代 `127.0.0.1:8081`（Axum 路由本身不带 `/api` 前缀）
+  - 其余 → `127.0.0.1:8080`（web 静态资源）
 - MySQL 8.0：**云服务商托管实例，不进编排**，通过 `.env` 注入连接串
 
-两个镜像由 GitHub CI 自动构建并推送到 GHCR（`.github/workflows/docker.yml`）：push 到 `main` 发布 `latest` + `sha-*`，打 `v*` 标签发布语义化版本；PR 只构建验证不推送。
+两个镜像由 GitHub CI 的 `release.yml` 在打 `v*` 标签时自动构建并推送到 GHCR（semver + latest）。
 
 ## 步骤
 
@@ -34,15 +36,21 @@
    WEB_PORT=8080
    ```
 
-5. **DNS + 全局 Caddy**：域名 A/AAAA 记录指向服务器，然后在宿主的全局 Caddy 配置里加一个站点（证书由它照常自动签发）：
+5. **DNS + 全局 Caddy**：域名 A/AAAA 记录指向服务器，然后在宿主的全局 Caddy 配置里加一个站点（证书由它照常自动签发）。**关键：`/api` 前缀由 Caddy 剥掉**（服务端路由本身不带前缀）：
 
    ```caddyfile
-   planwave.example.com {
-       reverse_proxy 127.0.0.1:8080
+   task.example.com {
+       handle /api/* {
+           uri strip_prefix /api
+           reverse_proxy 127.0.0.1:8081
+       }
+       handle {
+           reverse_proxy 127.0.0.1:8080
+       }
    }
    ```
 
-   nginx 已把 `/api` 正确反代到后端，全局 Caddy 只需整站转发，无需再拆路径。改完 `systemctl reload caddy`。
+   改完 `systemctl reload caddy`。漏掉 `uri strip_prefix /api` 会在注册时报 404（Axum 收到的是 `/api/auth/register`）。
 
 6. **启动**：
 
@@ -53,7 +61,7 @@
 
    > 服务器上没有预拉镜像时，`docker compose up -d --build` 会直接从源码构建（需要一些时间）。
 
-7. **验收**：浏览器打开 `https://你的域名` → 注册唯一账号 → 任一端登录同一账号 → 互改任务观察秒级同步；`curl -i https://你的域名/api/health` 应返回 `{"status":"ok"}`。
+7. **验收**：`curl -s https://你的域名/api/health` 应返回 `{"status":"ok"}`；浏览器打开 `https://你的域名` → 注册唯一账号 → 任一端登录同一账号 → 一端改动、另一端点刷新按钮即可看到同步。
 
 ## 日常运维
 
@@ -66,5 +74,5 @@ docker compose restart server
 ## 说明
 
 - 服务端在启动时自动跑迁移；`account` 表至多一行（单用户设计），忘记密码直接清空 `account` 表重新初始化即可。
-- WS 心跳 25s；nginx 侧 `proxy_read_timeout` 已放宽到 1h，国内访问香港链路抖动时，客户端以指数退避重连并容忍离线操作——同步不依赖长连接存活。
+- 同步是拉取式：客户端本地写即时生效 + 防抖自动推送；多端一致性由启动/聚焦/定时轮询/手动刷新保证，服务端无长连接状态，重启不影响客户端。
 - 备份重点是云 MySQL 实例本身；oplog 与投影都在其中。

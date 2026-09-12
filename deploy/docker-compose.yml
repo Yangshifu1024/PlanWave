@@ -1,18 +1,19 @@
 # PlanWave 生产部署：两个镜像（server + web），MySQL 外接云托管实例。
 #
-# 镜像默认来自 GHCR（GitHub CI 自动发布，见 .github/workflows/docker.yml）：
+# 镜像默认来自 GHCR（GitHub CI 的 release.yml 在 v* 标签时自动发布）：
 #   在 .env 里设置 PLANWAVE_SERVER_IMAGE / PLANWAVE_WEB_IMAGE 为你的仓库路径，例如：
 #     PLANWAVE_SERVER_IMAGE=ghcr.io/your-name/planwave-server:latest
 #     PLANWAVE_WEB_IMAGE=ghcr.io/your-name/planwave-web:latest
 #   未拉取到镜像时，compose 会自动用下方 build 段从源码构建（需要 Docker BuildKit）。
 #
-# 端口约定：宿主上已有全局 Caddy 占用 80/443 并终结 TLS，
-# web 容器只绑定本机回环端口（默认 127.0.0.1:8080），由全局 Caddy 反代过去。
+# 端口约定：宿主上已有全局 Caddy 占用 80/443 并终结 TLS，负责按路径分流：
+#   /api/* → 剥掉 /api 前缀后反代到 server（127.0.0.1:8081）
+#   其余   → web 静态资源（127.0.0.1:8080，nginx 默认配置纯托管 dist）
 #
 # 使用：
-#   1. 准备 .env（DATABASE_URL / PLANWAVE_JWT_SECRET / 镜像变量 / WEB_PORT）
+#   1. 准备 .env（DATABASE_URL / PLANWAVE_JWT_SECRET / 镜像变量 / WEB_BIND / WEB_PORT）
 #   2. docker compose pull && docker compose up -d
-#   3. 全局 Caddy 配置反代到 http://127.0.0.1:8080（见 deploy/README.md）
+#   3. 全局 Caddy 按路径分流（示例见 deploy/README.md）
 #   4. 打开 https://你的域名 注册唯一账号，各端登录同一账号即可同步
 
 services:
@@ -26,28 +27,24 @@ services:
       PLANWAVE_LISTEN: 0.0.0.0:8787
       PLANWAVE_JWT_SECRET: ${PLANWAVE_JWT_SECRET:?PLANWAVE_JWT_SECRET 未设置}
       RUST_LOG: ${RUST_LOG:-info,planwave_server=debug,tower_http=warn}
+    ports:
+      # 只绑回环，供宿主 Caddy 直连（API 不经 web 容器）
+      - "127.0.0.1:8081:8787"
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8787/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
-    networks: [planwave]
 
   web:
     image: ${PLANWAVE_WEB_IMAGE:-ghcr.io/example/planwave-web:latest}
     build:
       context: ..
       dockerfile: deploy/web.Dockerfile
-    environment:
-      PLANWAVE_API_UPSTREAM: server:8787
     ports:
       # 只绑回环：公网流量一律经宿主全局 Caddy 反代进来
       - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8080}:80"
     restart: unless-stopped
     depends_on:
       - server
-    networks: [planwave]
-
-networks:
-  planwave:
