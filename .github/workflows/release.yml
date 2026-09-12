@@ -345,10 +345,16 @@ jobs:
           pattern: client-*
           merge-multiple: true
           path: release
+      # merge-multiple 会保留各 artifact 内部的目录结构（appimage/ deb/ …），
+      # 统一摊平到 upload/ 再上传
       - name: 整理产物
-        run: ls -la release/
+        run: |
+          mkdir -p upload
+          find release -type f \( -name "*.exe" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.dmg" -o -name "*.apk" \) \
+            -exec cp {} upload/ \;
+          ls -la upload/
       - name: 上传到 Release
         uses: softprops/action-gh-release@v2
         with:
-          files: release/*
+          files: upload/*
           generate_release_notes: true
