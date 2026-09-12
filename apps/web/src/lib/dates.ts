@@ -1,7 +1,5 @@
 //! 日期显示与筛选工具（本地时区）。
 
-import { CalendarDate, parseDate } from "@internationalized/date";
-
 export function startOfDay(d: Date): Date {
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);
@@ -48,21 +46,17 @@ export function dueLabel(ts: number, now = new Date()): DueLabel {
   };
 }
 
-/** 毫秒时间戳 → React Aria CalendarDate（本地时区的当天）。 */
-export function toDateValue(ts: number | null): CalendarDate | null {
-  if (ts === null) return null;
-  const d = new Date(ts);
-  try {
-    return parseDate(
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`,
-    );
-  } catch {
-    return null;
-  }
+/** 毫秒时间戳 → `<input type="date">` 的 yyyy-MM-dd（本地时区）；null 表示未设置。 */
+export function toDateInput(ms: number | null): string {
+  if (ms === null) return "";
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-/** CalendarDate → 毫秒时间戳（本地时区当天零点）；null 表示清空。 */
-export function fromDateValue(d: CalendarDate | null): number | null {
-  if (!d) return null;
-  return new Date(d.year, d.month - 1, d.day).getTime();
+/** yyyy-MM-dd → 毫秒时间戳（本地时区当天零点）；空串表示清空。 */
+export function fromDateInput(s: string): number | null {
+  if (!s) return null;
+  const [y, m, d] = s.split("-").map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d).getTime();
 }

@@ -17,21 +17,23 @@ function viewTitle(view: ViewKind): string {
   }
 }
 
-/** 中栏：视图标题 + 搜索 + 快速添加 + 任务列表。 */
+/** 中栏：视图标题 + 搜索 + 快速添加（标题 + 优先级） + 任务列表。 */
 export function TaskList() {
   const tasks = useApp((s) => s.tasks);
   const view = useApp((s) => s.view);
   const search = useApp((s) => s.search);
   const projects = useApp((s) => s.projects);
   const [draft, setDraft] = useState("");
+  const [priority, setPriority] = useState(0);
 
   const visible = useMemo(() => filterTasks(tasks, view, search), [tasks, view, search]);
   const isTrash = view.kind === "smart" && view.smart === "trash";
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    void actions.addTask(draft);
+    void actions.addTask(draft, undefined, priority);
     setDraft("");
+    setPriority(0);
   };
 
   return (
@@ -83,7 +85,7 @@ export function TaskList() {
       </div>
 
       {!isTrash && (
-        <form onSubmit={submit} className="px-6 pt-3">
+        <form onSubmit={submit} className="flex gap-2 px-6 pt-3">
           <Input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -91,6 +93,18 @@ export function TaskList() {
             data-testid="new-task-input"
             fullWidth
           />
+          <select
+            value={priority}
+            onChange={(e) => setPriority(Number(e.target.value))}
+            data-testid="new-task-priority"
+            aria-label="新任务优先级"
+            className="shrink-0 rounded-xl border border-zinc-200 bg-white px-2 text-sm text-zinc-600 [color-scheme:light] dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:[color-scheme:dark]"
+          >
+            <option value={0}>无</option>
+            <option value={1}>低</option>
+            <option value={2}>中</option>
+            <option value={3}>高</option>
+          </select>
         </form>
       )}
 

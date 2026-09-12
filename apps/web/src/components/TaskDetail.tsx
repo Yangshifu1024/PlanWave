@@ -1,18 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
-import {
-  Button,
-  Calendar,
-  DatePicker,
-  Input,
-  ListBox,
-  ListBoxItem,
-  Select,
-  Switch,
-  TextArea,
-} from "@heroui/react";
+import { Button, Input, ListBox, ListBoxItem, Select, Switch, TextArea } from "@heroui/react";
 import type { TaskRecord } from "../types";
 import { actions, useApp } from "../state/store";
-import { fromDateValue, toDateValue } from "../lib/dates";
+import { fromDateInput, toDateInput } from "../lib/dates";
 
 const PRIORITIES: { value: number; label: string }[] = [
   { value: 0, label: "无" },
@@ -21,7 +11,45 @@ const PRIORITIES: { value: number; label: string }[] = [
   { value: 3, label: "高" },
 ];
 
-/** 右栏任务详情：桌面侧栏、移动端全屏覆盖。字段编辑防抖提交 oplog。 */
+interface Draft {
+  title: string;
+  notes: string;
+  labels: string;
+  priority: number;
+  project_id: string;
+  due: string; // yyyy-MM-dd，空串 = 未设置
+}
+
+function draftFrom(task: TaskRecord): Draft {
+  return {
+    title: task.title,
+    notes: task.notes,
+    labels: task.labels.join(", "),
+    priority: task.priority,
+    project_id: task.project_id,
+    due: toDateInput(task.due_date),
+  };
+}
+
+/** 与已保存记录逐字段对比，返回需要提交的 patch；无变化返回 null。 */
+function diffPatch(task: TaskRecord, d: Draft): Record<string, unknown> | null {
+  const patch: Record<string, unknown> = {};
+  const title = d.title.trim();
+  if (title !== task.title) patch.title = title;
+  if (d.notes !== task.notes) patch.notes = d.notes;
+  const labels = d.labels
+    .split(/[,，]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (labels.join(", ") !== task.labels.join(", ")) patch.labels = labels;
+  if (d.priority !== task.priority) patch.priority = d.priority;
+  if (d.project_id !== task.project_id) patch.project_id = d.project_id;
+  const due = fromDateInput(d.due);
+  if (due !== task.due_date) patch.due_date = due;
+  return Object.keys(patch).length > 0 ? patch : null;
+}
+
+/** 右栏任务详情：桌面侧栏、移动端全屏覆盖。字段编辑为草稿，「保存」统一提交。 */
 export function TaskDetail() {
   const tasks = useApp((s) => s.tasks);
   const projects = useApp((s) => s.projects);
@@ -56,25 +84,20 @@ function DetailBody({
   projects: { id: string; name: string }[];
   onClose: () => void;
 }) {
-  const [title, setTitle] = useState(task.title);
-  const [notes, setNotes] = useState(task.notes);
-  const [labels, setLabels] = useState(task.labels.join(", "));
+  const [draft, setDraft] = useState<Draft>(() => draftFrom(task));
+  const patch = diffPatch(task, draft);
+  const dirty = patch !== null;
 
-  // 远端同步更新时，若输入框未聚焦则跟随刷新
+  // 远端/同步更新时，若本地没有未保存修改则跟随刷新（正在编辑则不打扰）
   useEffect(() => {
-    if (
-      document.activeElement?.tagName !== "INPUT" &&
-      document.activeElement?.tagName !== "TEXTAREA"
-    ) {
-      setTitle(task.title);
-      setNotes(task.notes);
-      setLabels(task.labels.join(", "));
-    }
-  }, [task]);
+    if (!dirty) setDraft(draftFrom(task));
+  }, [task, dirty]);
 
-  const patchDebounced = debounce((patch: Parameters<typeof actions.patchTask>[1]) => {
-    void actions.patchTask(task.id, patch);
-  }, 350);
+  const save = async () => {
+    if (patch === null) return;
+    setDraft((d) => ({ ...d, title: d.title.trim() }));
+    await actions.patchTask(task.id, patch);
+  };
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-y-auto p-5">
@@ -95,15 +118,26 @@ function DetailBody({
               从回收站恢复
             </Button>
           ) : (
-            <Button
-              size="sm"
-              variant="ghost"
-              onPress={() => void actions.deleteTask(task.id)}
-              data-testid="detail-delete"
-              className="text-zinc-400 hover:text-red-500"
-            >
-              删除
-            </Button>
+            <>
+              <Button
+                size="sm"
+                variant="primary"
+                isDisabled={!dirty || !draft.title.trim()}
+                onPress={() => void save()}
+                data-testid="detail-save"
+              >
+                保存
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onPress={() => void actions.deleteTask(task.id)}
+                data-testid="detail-delete"
+                className="text-zinc-400 hover:text-red-500"
+              >
+                删除
+              </Button>
+            </>
           )}
           <button
             onClick={onClose}
@@ -116,12 +150,10 @@ function DetailBody({
       </div>
 
       <Input
-        value={title}
-        onChange={(e) => {
-          setTitle(e.target.value);
-          patchDebounced({ title: e.target.value });
-        }}
+        value={draft.title}
+        onChange={(e) => setDraft({ ...draft, title: e.target.value })}
         className="text-lg font-semibold"
+        fullWidth
         data-testid="detail-title"
         aria-label="任务标题"
       />
@@ -131,34 +163,35 @@ function DetailBody({
         onChange={() => void actions.toggleTask(task.id)}
         data-testid="detail-completed"
       >
-        已完成
+        <Switch.Content>
+          <span className="text-sm">已完成</span>
+          <Switch.Control>
+            <Switch.Thumb />
+          </Switch.Control>
+        </Switch.Content>
       </Switch>
 
       <Field label="截止日期">
-        <DatePicker
-          value={toDateValue(task.due_date)}
-          onChange={(v) => void actions.patchTask(task.id, { due_date: fromDateValue(v) })}
-          data-testid="detail-due"
-          aria-label="截止日期"
-        >
-          <DatePicker.Trigger data-testid="detail-due-trigger">
-            {toDateValue(task.due_date)?.toString() ?? "选择日期"}
-            <DatePicker.TriggerIndicator />
-          </DatePicker.Trigger>
-          <DatePicker.Popover>
-            <Calendar />
-          </DatePicker.Popover>
-        </DatePicker>
-        {task.due_date !== null && (
-          <Button
-            size="sm"
-            variant="ghost"
-            onPress={() => void actions.patchTask(task.id, { due_date: null })}
-            className="text-xs text-zinc-400"
-          >
-            清除
-          </Button>
-        )}
+        <div className="flex w-full items-center gap-2">
+          <input
+            type="date"
+            value={draft.due}
+            onChange={(e) => setDraft({ ...draft, due: e.target.value })}
+            data-testid="detail-due"
+            aria-label="截止日期"
+            className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 [color-scheme:light] dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 dark:[color-scheme:dark]"
+          />
+          {draft.due !== "" && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onPress={() => setDraft({ ...draft, due: "" })}
+              className="shrink-0 text-xs text-zinc-400"
+            >
+              清除
+            </Button>
+          )}
+        </div>
       </Field>
 
       <Field label="优先级">
@@ -167,8 +200,8 @@ function DetailBody({
             <Button
               key={p.value}
               size="sm"
-              variant={task.priority === p.value ? "primary" : "ghost"}
-              onPress={() => void actions.patchTask(task.id, { priority: p.value })}
+              variant={draft.priority === p.value ? "primary" : "ghost"}
+              onPress={() => setDraft({ ...draft, priority: p.value })}
             >
               {p.label}
             </Button>
@@ -178,9 +211,9 @@ function DetailBody({
 
       <Field label="所属项目">
         <Select
-          selectedKey={task.project_id || null}
+          selectedKey={draft.project_id || null}
           onSelectionChange={(key) =>
-            void actions.patchTask(task.id, { project_id: (key as string) ?? "" })
+            setDraft({ ...draft, project_id: (key as string) ?? "" })
           }
           data-testid="detail-project"
           aria-label="所属项目"
@@ -204,30 +237,21 @@ function DetailBody({
 
       <Field label="标签（逗号分隔）">
         <Input
-          value={labels}
-          onChange={(e) => {
-            setLabels(e.target.value);
-            patchDebounced({
-              labels: e.target.value
-                .split(/[,，]/)
-                .map((s) => s.trim())
-                .filter(Boolean),
-            });
-          }}
+          value={draft.labels}
+          onChange={(e) => setDraft({ ...draft, labels: e.target.value })}
           placeholder="工作, 重要"
+          fullWidth
           data-testid="detail-labels"
         />
       </Field>
 
       <Field label="备注">
         <TextArea
-          value={notes}
-          onChange={(e) => {
-            setNotes(e.target.value);
-            patchDebounced({ notes: e.target.value });
-          }}
+          value={draft.notes}
+          onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
           rows={6}
           placeholder="补充说明…"
+          fullWidth
           data-testid="detail-notes"
         />
       </Field>
@@ -239,15 +263,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="space-y-1.5">
       <div className="text-xs font-medium text-zinc-400">{label}</div>
-      <div className="flex flex-wrap items-center gap-2">{children}</div>
+      <div className="flex flex-col gap-2">{children}</div>
     </div>
   );
-}
-
-function debounce<F extends (...args: never[]) => void>(fn: F, ms: number): F {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  return ((...args: Parameters<F>) => {
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(() => fn(...args), ms);
-  }) as F;
 }

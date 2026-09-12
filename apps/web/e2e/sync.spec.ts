@@ -45,12 +45,19 @@ test.describe.serial("PlanWave Web E2E", () => {
     await page.getByTestId("new-task-input").press("Enter");
     await expect(row(page, "写周报")).toBeVisible({ timeout: 10_000 });
 
-    // 详情面板：备注 + 优先级 + 标签
+    // 详情面板（草稿 + 手动保存）：备注 + 优先级 + 标签 + 截止日期
     await row(page, "写周报").click();
     await expect(page.getByTestId("task-detail")).toBeVisible();
     await page.getByTestId("detail-notes").fill("同步协议演示任务");
     await page.getByTestId("detail-priority").getByText("高", { exact: true }).click();
     await page.getByTestId("detail-labels").fill("工作, 重要");
+    await page.getByTestId("detail-due").fill("2026-09-20");
+    await page.getByTestId("detail-save").click();
+    // 保存后同步到列表行：优先级圆点 + 标签
+    await expect(row(page, "写周报").locator("span[title='优先级：高']")).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(row(page, "写周报").getByText("工作", { exact: true })).toBeVisible();
 
     // 勾选完成 → 删除线
     await page.getByTestId("check-写周报").click();

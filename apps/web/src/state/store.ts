@@ -229,7 +229,7 @@ export const actions = {
     await afterMutate();
   },
 
-  async addTask(title: string, projectId?: string): Promise<void> {
+  async addTask(title: string, projectId?: string, priority: number = 0): Promise<void> {
     if (!title.trim()) return;
     const s = useApp.getState();
     const project_id = projectId ?? (s.view.kind === "project" ? s.view.id : "");
@@ -241,6 +241,7 @@ export const actions = {
         title: title.trim(),
         sort_order: Date.now(),
         ...(project_id ? { project_id } : {}),
+        ...(priority ? { priority } : {}),
       }),
     );
     await afterMutate();
