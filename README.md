@@ -114,6 +114,8 @@ macOS / iOS 的签名与公证配置见 [docs/APPLE_SIGNING.md](docs/APPLE_SIGNI
 | UI | 视图筛选/排序、任务行交互 | `apps/web/tests`（10 例） |
 | E2E | 真实服务端 + 双浏览器手动刷新同步 + 离线编辑恢复 | `apps/web/e2e`（3 例） |
 
+发版流程：`pnpm bump <版本>` 统一改全仓库版本号并刷新两个锁文件 → 提交 → 打 `v<版本>` 标签推送。
+
 CI（GitHub Actions）：push/PR 只跑 lint + test（fmt、clippy、Rust 全量测试连 MySQL 容器、前端 lint/test/构建、Playwright E2E）；**仅 `v*` 标签**触发 [release.yml](.github/workflows/release.yml)——server/web 镜像推送到 GHCR，五端客户端（Windows NSIS / macOS dmg / Linux AppImage+deb / Android APK / iOS ipa）上传 GitHub Release。
 
 ## 部署

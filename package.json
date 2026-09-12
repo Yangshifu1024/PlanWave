@@ -1,13 +1,14 @@
 {
   "name": "planwave",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "PlanWave — 离线优先、多端实时同步的 To-Do 应用（Tauri 2 + React + Rust）",
   "scripts": {
     "dev": "pnpm dev:web",
     "dev:web": "pnpm --filter @planwave/web dev",
     "dev:server": "cargo run -p planwave-server",
     "stop": "node scripts/free-ports.mjs 8787 4173",
+    "bump": "node scripts/bump-version.mjs",
     "dev:desktop": "pnpm --filter @planwave/client tauri:dev",
     "dev:android": "pnpm --filter @planwave/client tauri:android-dev",
     "build": "pnpm build:wasm && pnpm --filter @planwave/web build && cargo build --release --workspace",
