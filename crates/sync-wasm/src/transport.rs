@@ -81,7 +81,15 @@ impl HttpTransport {
             resp = self.send_raw(method, path, auth.as_deref(), body).await?;
         }
         if !resp.ok() {
-            return Err(ClientError::Network(format!("HTTP {}", resp.status())));
+            // 优先透出服务端的业务错误文案（如「账号已存在…」），否则退回状态码
+            let body = resp.text().await.unwrap_or_default();
+            let detail = serde_json::from_str::<serde_json::Value>(&body)
+                .ok()
+                .and_then(|v| v.get("error").and_then(|e| e.as_str()).map(String::from));
+            return Err(ClientError::Network(match detail {
+                Some(msg) => msg,
+                None => format!("HTTP {}", resp.status()),
+            }));
         }
         resp.json().await.map_err(net_err)
     }

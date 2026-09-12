@@ -6,7 +6,7 @@
 import { create } from "zustand";
 import type { ProjectRecord, TaskRecord } from "../types";
 import { isTauri, applyServerAddress } from "../lib/platform";
-import { ensureTypedClient, hasTokens, peekClient } from "../wasm/client";
+import { ensureTypedClient, hasTokens } from "../wasm/client";
 import { requestReminderPermission, rescheduleReminders } from "../lib/reminders";
 
 export type ViewKind =
@@ -120,23 +120,60 @@ export const actions = {
   },
 
   async register(username: string, password: string, server?: string): Promise<void> {
-    if (server !== undefined && (await switchServer(server))) return; // 已重载页面
-    const client = await ensureTypedClient();
-    try {
-      await client.register(username, password, deviceId(), deviceDesc());
-      await actions.enterApp();
-    } catch (e) {
-      useApp.getState().setPartial({ authError: errMsg(e) });
-    }
+    await actions.authenticate(username, password, server);
   },
 
   async login(username: string, password: string, server?: string): Promise<void> {
-    if (server !== undefined && (await switchServer(server))) return; // 已重载页面
+    await actions.authenticate(username, password, server);
+  },
+
+  /**
+   * 统一认证入口：以用户输入的服务器地址实测账号状态，动态决定注册还是登录。
+   *
+   * 首次启动客户端时 boot 阶段的探测可能打在错误的默认地址上（hasAccount 不可信），
+   * 所以提交时必须重新探测：服务端已有账号 → login；没有 → register。
+   * 注册撞上「账号已存在」（多端竞态）时自动回退登录再试一次。
+   */
+  async authenticate(username: string, password: string, server?: string): Promise<void> {
+    const baseChanged = server !== undefined && applyServerAddress(server);
+    const client = await ensureTypedClient();
+    if (baseChanged) {
+      // 地址变化 = 换数据空间：清空旧 token 与本地库（本会话无旧连接，安全）
+      localStorage.removeItem("planwave.tokens");
+      await client.clearLocal();
+      useApp.getState().setPartial({ hasAccount: false });
+    }
+
+    let hasAccount: boolean | null = null;
     try {
-      const client = await ensureTypedClient();
-      await client.login(username, password, deviceId(), deviceDesc());
+      hasAccount = (await client.status()).has_account;
+    } catch {
+      useApp.getState().setPartial({
+        authError: "无法连接服务器，请检查服务器地址与网络后重试",
+        hasAccount: false,
+      });
+      return;
+    }
+    useApp.getState().setPartial({ hasAccount });
+
+    try {
+      if (hasAccount) {
+        await client.login(username, password, deviceId(), deviceDesc());
+      } else {
+        await client.register(username, password, deviceId(), deviceDesc());
+      }
       await actions.enterApp();
     } catch (e) {
+      // 新服务器注册失败（账号实际已存在的竞态）：回退登录再试一次
+      if (!hasAccount) {
+        try {
+          await client.login(username, password, deviceId(), deviceDesc());
+          await actions.enterApp();
+          return;
+        } catch {
+          /* 两次都失败，展示原始错误 */
+        }
+      }
       useApp.getState().setPartial({ authError: errMsg(e) });
     }
   },
@@ -282,26 +319,6 @@ export const actions = {
 async function afterMutate(): Promise<void> {
   scheduleAutoSync();
   await actions.reload();
-}
-
-/**
- * 切换服务器：换地址即换数据空间——清 token、清本地库，重载页面重建客户端。
- * WASM 客户端是单例，构造后地址不可更换；返回是否发生了切换。
- */
-async function switchServer(base: string): Promise<boolean> {
-  if (!applyServerAddress(base)) return false;
-  localStorage.removeItem("planwave.tokens");
-  const constructed = peekClient();
-  if (constructed) {
-    await constructed.clear_local();
-  } else {
-    await new Promise<void>((resolve) => {
-      const req = indexedDB.deleteDatabase("planwave");
-      req.onsuccess = req.onerror = req.onblocked = () => resolve();
-    });
-  }
-  location.reload();
-  return true;
 }
 
 let autoSyncTimer: ReturnType<typeof setTimeout> | null = null;
