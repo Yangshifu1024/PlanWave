@@ -282,7 +282,8 @@ impl Store for MySqlStore {
     }
 
     async fn pull(&self, since: u64, limit: u32) -> StoreResult<(Vec<SequencedOp>, u64)> {
-        let rows: Vec<(i64, String, String, i64, String, String, i64)> = sqlx::query_as(
+        // lamport 列是 BIGINT UNSIGNED：sqlx 要求用 u64 解码（seq/client_time_ms 是有符号 BIGINT）
+        let rows: Vec<(i64, String, String, u64, String, String, i64)> = sqlx::query_as(
             // patch 列是 JSON 类型：CAST 成 CHAR 才能按 String 解码（sqlx 类型兼容规则）
             "SELECT seq, op_id, device_id, lamport, entity_id, CAST(patch AS CHAR) AS patch, client_time_ms
              FROM ops WHERE seq > ? ORDER BY seq LIMIT ?",
