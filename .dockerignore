@@ -1,0 +1,16 @@
+# 构建上下文为仓库根目录，排除无关/超大内容
+**/node_modules
+**/target
+**/dist
+apps/web/e2e
+apps/web/test-results
+apps/web/playwright-report
+apps/client/gen
+apps/client/icons
+docs
+.github
+.idea
+.vscode
+*.md
+!README.md
+android-build.log

@@ -1,0 +1,111 @@
+name: CI
+
+# lint + test：所有 push / PR 都跑；打包发布（docker 镜像 + 五端客户端）只在 v* 标签
+# 由 release.yml 触发。
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust (fmt + clippy + test)
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: planwave
+          MYSQL_DATABASE: planwave_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pplanwave"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DATABASE_URL: mysql://root:planwave@127.0.0.1:3306/planwave_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Test（无 MySQL 时自动跳过 DB 用例，这里会真跑）
+        run: cargo test --workspace
+
+  web:
+    name: Web (lint + test + wasm 构建)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            crates/sync-wasm --target wasm32-unknown-unknown
+          key: wasm
+      - run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm --filter @planwave/web lint
+      - name: Test
+        run: pnpm --filter @planwave/web test
+      - name: Build（wasm 数据层 + 前端）
+        run: pnpm build:web
+
+  e2e:
+    name: E2E (Playwright, memory store)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: e2e
+      - run: pnpm install --frozen-lockfile
+      - name: Install Playwright browsers
+        run: pnpm --filter @planwave/web exec playwright install --with-deps chromium
+      - name: Build web（wasm 数据层 + 前端）
+        run: pnpm build:web
+      - name: Run E2E
+        run: pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 7

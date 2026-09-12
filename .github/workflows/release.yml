@@ -1,0 +1,360 @@
+# 发布流水线：只在 v* 标签触发。
+# - server / web 构建并推送 Docker 镜像到 GHCR（semver + latest）
+# - 五端客户端（Windows / macOS / Linux / Android / iOS）打包并上传 GitHub Release
+# - macOS / iOS 签名与公证：见 docs/APPLE_SIGNING.md（配置对应 Secrets 即可；
+#   未配置时对应平台自动跳过签名，产物仍会上传）
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  # ---------- Docker 镜像 ----------
+
+  docker-server:
+    name: Docker 镜像（server）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}-server
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/server.Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,scope=server,mode=max
+
+  docker-web:
+    name: Docker 镜像（web）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}-web
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/web.Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+
+  # ---------- 客户端打包（五端）----------
+
+  web-dist:
+    name: 前端产物（各客户端共用）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/sync-wasm --target wasm32-unknown-unknown
+          key: wasm-release
+      - run: pnpm install --frozen-lockfile
+      - name: 构建 WASM 数据层
+        run: pnpm build:wasm
+      - name: 构建前端
+        run: pnpm --filter @planwave/web build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: apps/web/dist/
+          retention-days: 1
+
+  desktop-windows:
+    name: 客户端（Windows NSIS）
+    runs-on: windows-latest
+    needs: [web-dist]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: pnpm install --frozen-lockfile
+      - name: 下载前端产物
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: apps/web/dist
+      - name: Tauri build（NSIS）
+        run: pnpm --filter @planwave/client exec tauri build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-windows
+          path: target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+
+  desktop-linux:
+    name: 客户端（Linux AppImage/deb）
+    runs-on: ubuntu-latest
+    needs: [web-dist]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: 安装 Linux 打包依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf libfuse2
+      - run: pnpm install --frozen-lockfile
+      - name: 下载前端产物
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: apps/web/dist
+      - name: Tauri build（AppImage + deb）
+        run: pnpm --filter @planwave/client exec tauri build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-linux
+          path: |
+            target/release/bundle/appimage/*.AppImage
+            target/release/bundle/deb/*.deb
+          if-no-files-found: error
+
+  desktop-macos:
+    name: 客户端（macOS dmg，签名+公证）
+    runs-on: macos-latest
+    needs: [web-dist]
+    env:
+      # 映射成 job 级 env，供步骤 if 判断是否配置了签名
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - run: pnpm install --frozen-lockfile
+      - name: 下载前端产物
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: apps/web/dist
+      # 签名 + 公证配置见 docs/APPLE_SIGNING.md；未配置 Secrets 时跳过签名仍可出包
+      - name: 导入 Developer ID 证书
+        if: env.APPLE_CERTIFICATE != ''
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: release
+        run: |
+          CERTIFICATE=$RUNNER_TEMP/certificate.p12
+          echo -n "$APPLE_CERTIFICATE" | base64 --decode -o $CERTIFICATE
+          KEYCHAIN=$RUNNER_TEMP/planwave.keychain-db
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN
+          security set-keychain-settings -lut 21600 $KEYCHAIN
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN
+          security import $CERTIFICATE -k $KEYCHAIN -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN
+          security list-keychain -d user -s $KEYCHAIN login.keychain-db
+      - name: Tauri build（universal dmg）
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: pnpm --filter @planwave/client exec tauri build --target universal-apple-darwin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-macos
+          path: target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+
+  android:
+    name: 客户端（Android APK，签名）
+    runs-on: ubuntu-latest
+    needs: [web-dist]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+      - run: pnpm install --frozen-lockfile
+      - name: 下载前端产物
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: apps/web/dist
+      - name: Tauri android build（apk）
+        env:
+          TAURI_ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/planwave.keystore
+          TAURI_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          TAURI_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          TAURI_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$TAURI_ANDROID_KEYSTORE_PASSWORD" ]; then
+            echo -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode -o "$TAURI_ANDROID_KEYSTORE_PATH"
+          fi
+          pnpm --filter @planwave/client exec tauri android build --apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-android
+          path: apps/client/gen/android/app/build/outputs/apk/universal/release/*.apk
+          if-no-files-found: error
+
+  ios:
+    name: 客户端（iOS ipa，Ad Hoc 签名）
+    runs-on: macos-latest
+    needs: [web-dist]
+    env:
+      # 映射成 job 级 env，供步骤 if 判断是否配置了签名
+      IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
+      - uses: Swatinem/rust-cache@v2
+      - run: pnpm install --frozen-lockfile
+      - name: 下载前端产物
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: apps/web/dist
+      # iOS 工程由 macos runner 生成（Windows/Linux 无法 init）
+      - name: Tauri ios init
+        run: pnpm --filter @planwave/client exec tauri ios init
+      - name: 导入 Ad Hoc 分发证书
+        if: env.IOS_CERTIFICATE != ''
+        env:
+          IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: release
+        run: |
+          CERTIFICATE=$RUNNER_TEMP/ios.p12
+          echo -n "$IOS_CERTIFICATE" | base64 --decode -o $CERTIFICATE
+          KEYCHAIN=$RUNNER_TEMP/ios.keychain-db
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN
+          security set-keychain-settings -lut 21600 $KEYCHAIN
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN
+          security import $CERTIFICATE -k $KEYCHAIN -P "$IOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN
+          security list-keychain -d user -s $KEYCHAIN login.keychain-db
+          PROFILE=$RUNNER_TEMP/profile.mobileprovision
+          echo -n "${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}" | base64 --decode -o $PROFILE
+          UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' /dev/stdin <<< \
+            "$(security cms -D -i $PROFILE 2>/dev/null)")
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp $PROFILE ~/Library/MobileDevice/Provisioning\ Profiles/$UUID.mobileprovision
+      - name: Tauri ios build（Ad Hoc ipa）
+        if: env.IOS_CERTIFICATE != ''
+        env:
+          IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
+        run: pnpm --filter @planwave/client exec tauri ios build --export-method ad-hoc
+      # 未配置签名 Secrets 时给出未签名构建说明，不出 ipa
+      - name: 未配置 iOS 签名提示
+        if: env.IOS_CERTIFICATE == ''
+        run: |
+          echo "::notice::未配置 iOS 签名 Secrets（见 docs/APPLE_SIGNING.md），本次跳过 ipa 打包"
+
+  release:
+    name: 发布 GitHub Release
+    runs-on: ubuntu-latest
+    needs: [docker-server, docker-web, desktop-windows, desktop-linux, desktop-macos, android]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: 整理产物
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name "*.exe" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.dmg" -o -name "*.apk" \) \
+            -exec cp {} release/ \;
+          ls -la release/
+      - name: 上传到 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true

@@ -1,0 +1,37 @@
+[package]
+name = "sync-wasm"
+description = "PlanWave 客户端 WASM 绑定：同步引擎 + IndexedDB 存储 + HTTP 传输"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+sync-core = { workspace = true }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+gloo-net = "0.6"
+gloo-storage = "0.3"
+idb = "0.6"
+console_error_panic_hook = "0.1"
+
+[dependencies.web-sys]
+version = "0.3"
+features = ["Window"]
+
+# uuid 在 wasm32 上需要浏览器随机数来源（引擎用它生成 op_id / device_id）
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+uuid = { version = "1", features = ["js"] }
+
+# wasm-opt 在本机/CI 均不稳定，且体积优化非必需
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
+[package.metadata.wasm-pack.profile.dev]
+wasm-opt = false

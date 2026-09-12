@@ -1,0 +1,16 @@
+{
+  "name": "@planwave/client",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "tauri:android-dev": "tauri android dev",
+    "tauri:android-build": "tauri android build --apk",
+    "tauri:ios-build": "tauri ios build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.3.1"
+  }
+}

@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 470" font-family="system-ui, 'Segoe UI', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#64748b"/>
+    </marker>
+    <style>
+      .box { rx: 12; }
+      .title { font-size: 15px; font-weight: 700; fill: #0f172a; }
+      .sub { font-size: 11.5px; fill: #475569; }
+      .tag { font-size: 11px; font-weight: 600; fill: #1d4ed8; }
+      .lbl { font-size: 11.5px; fill: #334155; }
+    </style>
+  </defs>
+
+  <text x="440" y="30" text-anchor="middle" font-size="18" font-weight="800" fill="#0f172a">PlanWave 同步模型：oplog 全序重放</text>
+
+  <!-- 客户端三端 -->
+  <g>
+    <rect class="box" x="30"  y="60" width="240" height="86" fill="#eff6ff" stroke="#3b82f6"/>
+    <text class="title" x="150" y="88" text-anchor="middle">Web 端</text>
+    <text class="sub"   x="150" y="108" text-anchor="middle">Rust→WASM + IndexedDB</text>
+    <text class="tag"   x="150" y="130" text-anchor="middle">本地优先 · 离线可写</text>
+
+    <rect class="box" x="30"  y="180" width="240" height="86" fill="#eff6ff" stroke="#3b82f6"/>
+    <text class="title" x="150" y="208" text-anchor="middle">Windows 桌面</text>
+    <text class="sub"   x="150" y="228" text-anchor="middle">Tauri 2 壳 + 同一 WASM</text>
+    <text class="tag"   x="150" y="250" text-anchor="middle">本地优先 · 离线可写</text>
+
+    <rect class="box" x="30"  y="300" width="240" height="86" fill="#eff6ff" stroke="#3b82f6"/>
+    <text class="title" x="150" y="328" text-anchor="middle">Android</text>
+    <text class="sub"   x="150" y="348" text-anchor="middle">Tauri 2 壳 + 同一 WASM</text>
+    <text class="tag"   x="150" y="370" text-anchor="middle">本地优先 · 离线可写</text>
+  </g>
+
+  <!-- 同步引擎说明 -->
+  <rect class="box" x="300" y="60" width="180" height="326" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text class="title" x="390" y="86" text-anchor="middle">SyncEngine</text>
+  <text class="lbl" x="390" y="112" text-anchor="middle">① 本地写立即生效</text>
+  <text class="lbl" x="390" y="136" text-anchor="middle">② op 入 pending 队列</text>
+  <text class="lbl" x="390" y="160" text-anchor="middle">③ 防抖批量 push</text>
+  <text class="lbl" x="390" y="184" text-anchor="middle">④ 按序号增量 pull</text>
+  <text class="lbl" x="390" y="208" text-anchor="middle">⑤ 手动/定时刷新拉取</text>
+  <text class="lbl" x="390" y="232" text-anchor="middle">⑥ 断网排队，恢复即推</text>
+  <text class="lbl" x="390" y="268" text-anchor="middle">合并语义（TS/Rust 同构）：</text>
+  <text class="lbl" x="390" y="288" text-anchor="middle">字段级 patch</text>
+  <text class="lbl" x="390" y="308" text-anchor="middle">op_id 幂等去重</text>
+  <text class="lbl" x="390" y="328" text-anchor="middle">墓碑软删除</text>
+  <text class="lbl" x="390" y="348" text-anchor="middle">Lamport 时钟</text>
+
+  <!-- 服务端 -->
+  <rect class="box" x="510" y="120" width="180" height="200" fill="#f0fdf4" stroke="#22c55e"/>
+  <text class="title" x="600" y="150" text-anchor="middle">Axum 服务端</text>
+  <text class="sub"   x="600" y="172" text-anchor="middle">唯一全序定序点</text>
+  <text class="lbl"   x="600" y="204" text-anchor="middle">POST /sync/push</text>
+  <text class="lbl"   x="600" y="226" text-anchor="middle">GET  /sync/pull</text>
+  <text class="lbl"   x="600" y="248" text-anchor="middle">无推送 · 客户端拉取制</text>
+  <text class="lbl"   x="600" y="284" text-anchor="middle">JWT + argon2id</text>
+  <text class="sub"   x="600" y="306" text-anchor="middle">oplog + 权威投影（同事务）</text>
+
+  <!-- MySQL -->
+  <g>
+    <rect class="box" x="720" y="170" width="130" height="100" fill="#fefce8" stroke="#eab308"/>
+    <ellipse cx="785" cy="196" rx="52" ry="16" fill="#fef9c3" stroke="#eab308"/>
+    <text class="title" x="785" y="201" text-anchor="middle" font-size="13">MySQL 8.0</text>
+    <text class="sub" x="785" y="234" text-anchor="middle">ops（oplog）</text>
+    <text class="sub" x="785" y="252" text-anchor="middle">projects / tasks</text>
+  </g>
+
+  <!-- 连线 -->
+  <g stroke="#64748b" stroke-width="1.6" fill="none">
+    <line x1="270" y1="103" x2="298" y2="103" marker-end="url(#arrow)"/>
+    <line x1="270" y1="223" x2="298" y2="223" marker-end="url(#arrow)"/>
+    <line x1="270" y1="343" x2="298" y2="343" marker-end="url(#arrow)"/>
+    <line x1="480" y1="170" x2="508" y2="170" marker-end="url(#arrow)"/>
+    <line x1="508" y1="270" x2="480" y2="270" marker-end="url(#arrow)"/>
+    <line x1="690" y1="220" x2="718" y2="220" marker-end="url(#arrow)"/>
+    <line x1="718" y1="230" x2="690" y2="230" marker-end="url(#arrow)"/>
+  </g>
+
+  <text class="lbl" x="493" y="158" text-anchor="middle">push</text>
+  <text class="lbl" x="493" y="292" text-anchor="middle">pull / ws</text>
+  <text x="440" y="440" text-anchor="middle" class="lbl">服务端按到达顺序分配全局单调 seq → 所有端按同一全序重放 → 确定性收敛（field-level LWW）</text>
+</svg>

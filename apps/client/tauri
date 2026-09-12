@@ -1,0 +1,4 @@
+#!/usr/bin/env node
+// Gradle 的 rustBuild 任务通过 `node tauri ...` 调用 CLI；
+// 该垫片把调用转发到本包（@planwave/client）的 @tauri-apps/cli。
+require("@tauri-apps/cli/tauri.js");

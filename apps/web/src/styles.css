@@ -1,0 +1,23 @@
+/* HeroUI v3 样式（@heroui/styles 内含 Tailwind v4 引入、主题与组件样式）。
+   注意：必须直接引 @heroui/styles——经 @heroui/react 的占位样式文件嵌套引入
+   会在构建产物中留下未解析的 @import，导致组件无样式。 */
+@import "@heroui/styles";
+
+/* 深色模式跟随 <html> 上的 .dark class（与 HeroUI 主题的 .dark 选择器一致） */
+@custom-variant dark (&:where(.dark, .dark *));
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-zinc-100 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100;
+}
+
+/* 细滚动条 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(161 161 170 / 0.4) transparent;
+}

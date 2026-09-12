@@ -1,0 +1,39 @@
+# Rust
+/target/
+**/target/
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Vite
+.vite/
+
+# WASM 构建产物（wasm-pack 生成）
+apps/web/src/wasm/pkg/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+
+# Env & local
+.env
+.env.*
+!.env.example
+
+# SQLite local (tauri dev)
+*.sqlite
+*.sqlite3
+*.db
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+/.zcode
+/node_modules
+/packages/client-core/node_modules
+*.log

@@ -1,0 +1,17 @@
+[package]
+name = "planwave"
+description = "PlanWave 桌面/移动端（Tauri 2 壳）：窗口 + 本地通知；数据层统一走 WASM 同步引擎"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "planwave_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-notification = "2"

@@ -1,0 +1,40 @@
+{
+  "name": "planwave",
+  "private": true,
+  "version": "0.1.0",
+  "description": "PlanWave — 离线优先、多端实时同步的 To-Do 应用（Tauri 2 + React + Rust）",
+  "scripts": {
+    "dev": "pnpm dev:web",
+    "dev:web": "pnpm --filter @planwave/web dev",
+    "dev:server": "cargo run -p planwave-server",
+    "stop": "node scripts/free-ports.mjs 8787 4173",
+    "dev:desktop": "pnpm --filter @planwave/client tauri:dev",
+    "dev:android": "pnpm --filter @planwave/client tauri:android-dev",
+    "build": "pnpm build:wasm && pnpm --filter @planwave/web build && cargo build --release --workspace",
+    "build:web": "pnpm build:wasm && pnpm --filter @planwave/web build",
+    "build:desktop": "pnpm --filter @planwave/client tauri:build",
+    "build:ios": "pnpm --filter @planwave/client tauri:ios-build",
+    "build:android": "pnpm --filter @planwave/client tauri:android-build",
+    "build:server": "cargo build --release -p planwave-server",
+    "test": "cargo test --workspace && pnpm --filter @planwave/web test",
+    "test:rust": "cargo test --workspace",
+    "test:web": "pnpm --filter @planwave/web test",
+    "test:e2e": "pnpm --filter @planwave/web test:e2e",
+    "lint": "cargo clippy --workspace --all-targets -- -D warnings && pnpm --filter @planwave/web lint",
+    "typecheck": "pnpm --filter @planwave/web typecheck",
+    "format": "prettier --write . && cargo fmt --all",
+    "format:check": "prettier --check . && cargo fmt --all -- --check",
+    "deploy:up": "docker compose -f deploy/docker-compose.yml up -d",
+    "deploy:down": "docker compose -f deploy/docker-compose.yml down",
+    "build:wasm": "wasm-pack build crates/sync-wasm --target web --out-dir ../../apps/web/src/wasm/pkg --out-name planwave"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.20.0",
+    "eslint": "^9.20.0",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.24.0"
+  },
+  "packageManager": "pnpm@12.3.4"
+}

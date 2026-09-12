@@ -1,0 +1,38 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "PlanWave",
+  "version": "0.1.0",
+  "identifier": "com.planwave.todo",
+  "build": {
+    "beforeDevCommand": "pnpm -w build:wasm && pnpm --filter @planwave/web dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "pnpm -w build:wasm && pnpm --filter @planwave/web build",
+    "frontendDist": "../web/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "PlanWave",
+        "width": 1100,
+        "height": 720,
+        "minWidth": 420,
+        "minHeight": 600
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "category": "Productivity",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico",
+      "icons/icon.icns"
+    ]
+  }
+}
