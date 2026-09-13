@@ -4,6 +4,7 @@ import { AuthScreen } from "./components/AuthScreen";
 import { Sidebar } from "./components/Sidebar";
 import { TaskList } from "./components/TaskList";
 import { TaskDetail } from "./components/TaskDetail";
+import { PurgeConfirmDialog } from "./components/PurgeConfirmDialog";
 import { WindowControls } from "./components/WindowControls";
 
 export default function App() {
@@ -58,6 +59,7 @@ function MainLayout({ sidebarOpen }: { sidebarOpen: boolean }) {
         <TaskList />
       </main>
       <TaskDetail />
+      <PurgeConfirmDialog />
     </div>
   );
 }

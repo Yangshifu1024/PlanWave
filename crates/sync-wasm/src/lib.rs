@@ -118,6 +118,17 @@ impl PlanWaveClient {
         Ok(())
     }
 
+    /// 彻底删除实体（回收站）：与软删墓碑不同，记录将从本机、服务器与所有端永久移除。
+    /// `entity_kind` 当前仅支持 "task"。
+    pub async fn forget(&self, entity_kind: String, entity_id: String) -> Result<(), JsValue> {
+        let patch = match entity_kind.as_str() {
+            "task" => sync_core::Patch::TaskForget,
+            other => return Err(js_err(format!("forget 不支持的实体类型: {other}"))),
+        };
+        self.client.mutate(entity_id, patch).await.map_err(js_err)?;
+        Ok(())
+    }
+
     /// 推送本地积压，返回推送条数。
     pub async fn flush(&self) -> Result<u32, JsValue> {
         match self.client.flush().await {

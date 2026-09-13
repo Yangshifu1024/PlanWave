@@ -293,6 +293,15 @@ impl Store for MySqlStore {
                     .await
                     .map_err(db)?;
                 }
+                Patch::TaskForget => {
+                    // 彻底删除：从权威投影移除记录本身；op 已入账本，
+                    // 回放（upsert…forget）与新设备快照（投影已删）自然收敛
+                    sqlx::query("DELETE FROM tasks WHERE id = ?")
+                        .bind(&op.entity_id)
+                        .execute(&mut *tx)
+                        .await
+                        .map_err(db)?;
+                }
             }
             out.push(seq as u64);
         }

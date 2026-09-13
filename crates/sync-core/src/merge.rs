@@ -118,6 +118,11 @@ pub fn apply_task(tasks: &mut HashMap<Id, TaskRecord>, id: &Id, patch: &TaskPatc
     apply_task_record(r, patch);
 }
 
+/// 彻底删除任务：从投影中移除记录本身（与软删墓碑正交）。实体不存在时为幂等 no-op。
+pub fn forget_task(tasks: &mut HashMap<Id, TaskRecord>, id: &Id) {
+    tasks.remove(id);
+}
+
 /// 便捷入口：按 `Patch` 分发。
 pub fn apply_patch(
     projects: &mut HashMap<Id, ProjectRecord>,
@@ -128,6 +133,7 @@ pub fn apply_patch(
     match patch {
         Patch::Project(p) => apply_project(projects, entity_id, p),
         Patch::Task(p) => apply_task(tasks, entity_id, p),
+        Patch::TaskForget => forget_task(tasks, entity_id),
     }
 }
 
@@ -300,5 +306,26 @@ mod tests {
             },
         );
         assert_eq!(s[&id].title, "后到");
+    }
+
+    #[test]
+    fn forget_removes_entity_and_is_idempotent() {
+        let mut tasks = HashMap::new();
+        let id = "id-1".to_string();
+        apply_task(
+            &mut tasks,
+            &id,
+            &TaskPatch {
+                title: Some("A".into()),
+                deleted: Some(true),
+                ..Default::default()
+            },
+        );
+        forget_task(&mut tasks, &id);
+        assert!(!tasks.contains_key(&id));
+        // 重复 forget / 对不存在的实体 forget：均为幂等 no-op
+        forget_task(&mut tasks, &id);
+        forget_task(&mut tasks, &"id-404".to_string());
+        assert!(tasks.is_empty());
     }
 }

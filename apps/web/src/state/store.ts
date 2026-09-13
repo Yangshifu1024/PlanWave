@@ -9,6 +9,7 @@ import { isTauri, applyServerAddress, getApiBase } from "../lib/platform";
 import { ensureTypedClient, hasTokens, type WasmClientApi } from "../wasm/client";
 import { requestReminderPermission, rescheduleReminders } from "../lib/reminders";
 import { nextOccurrenceMs } from "../lib/recurrence";
+import { collectDescendants } from "../lib/purge";
 
 export type ViewKind =
   | { kind: "smart"; smart: "today" | "upcoming" | "all" | "trash" }
@@ -46,6 +47,8 @@ interface AppState {
   theme: Theme;
   detailOpen: boolean;
   sidebarOpen: boolean;
+  /** 待确认的彻底删除（回收站）：用户勾选的根任务 id；null = 确认弹框关闭。 */
+  purgeConfirm: string[] | null;
 }
 
 interface AppStore extends AppState {
@@ -68,6 +71,7 @@ export const useApp = create<AppStore>()((set) => ({
   theme: "system",
   detailOpen: false,
   sidebarOpen: false,
+  purgeConfirm: null,
   setPartial: (p) => set(p),
 }));
 
@@ -364,6 +368,39 @@ export const actions = {
   async restoreTask(id: string): Promise<void> {
     const client = await ensureTypedClient();
     await client.mutate("task", id, JSON.stringify({ deleted: false }));
+    await afterMutate();
+  },
+
+  /** 回收站：请求彻底删除（打开确认弹框）。ids 为用户勾选的根，级联在执行时展开。 */
+  openPurgeConfirm(ids: string[]): void {
+    if (ids.length === 0) return;
+    useApp.getState().setPartial({ purgeConfirm: ids });
+  },
+
+  closePurgeConfirm(): void {
+    useApp.getState().setPartial({ purgeConfirm: null });
+  },
+
+  /** 彻底删除（forget op）：级联展开整棵后代树（含存活子任务）后逐实体清除，
+   *  记录将从本机、服务器与所有端永久移除。仅用于回收站。 */
+  async purgeTasks(ids: string[]): Promise<void> {
+    const s = useApp.getState();
+    // 防御：只对仍是墓碑的根做级联展开（勾选集可能在确认前因恢复而过期）
+    const roots = ids.filter((id) => s.tasks.some((t) => t.id === id && t.deleted));
+    if (roots.length === 0) {
+      s.setPartial({ purgeConfirm: null });
+      return;
+    }
+    const all = collectDescendants(s.tasks, roots);
+    const client = await ensureTypedClient();
+    for (const id of all) {
+      await client.forget("task", id);
+    }
+    const latest = useApp.getState();
+    if (latest.selectedTaskId && all.includes(latest.selectedTaskId)) {
+      latest.setPartial({ selectedTaskId: null, detailOpen: false });
+    }
+    latest.setPartial({ purgeConfirm: null });
     await afterMutate();
   },
 

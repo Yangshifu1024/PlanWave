@@ -24,6 +24,7 @@ const PROJECT_FIELD_LABELS: Record<string, string> = {
 /** 生成单条 op 的一句话摘要，如「完成任务」「改标题、改截止」。 */
 export function describePatch(patch: Record<string, unknown> | null | undefined): string {
   if (!patch || typeof patch !== "object") return "更新";
+  if (patch.type === "task_forget") return "彻底删除";
   const labels = patch.type === "project" ? PROJECT_FIELD_LABELS : TASK_FIELD_LABELS;
   const parts: string[] = [];
   for (const [key, label] of Object.entries(labels)) {

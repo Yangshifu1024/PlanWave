@@ -32,8 +32,21 @@ export function TaskRow(props: {
   onToggleCollapse?: () => void;
   /** 子任务行：缩进展示。 */
   isSubtask?: boolean;
+  /** 回收站多选：选中态与切换回调（仅墓碑行使用）。 */
+  trashSelected?: boolean;
+  onToggleTrashSelect?: () => void;
 }) {
-  const { task, showProject, projects, progress, collapsed, onToggleCollapse, isSubtask } = props;
+  const {
+    task,
+    showProject,
+    projects,
+    progress,
+    collapsed,
+    onToggleCollapse,
+    isSubtask,
+    trashSelected,
+    onToggleTrashSelect,
+  } = props;
   const selected = useApp((s) => s.selectedTaskId === task.id);
   const due = task.due_date !== null ? dueLabel(task.due_date) : null;
   const priority = PRIORITY_STYLE[task.priority];
@@ -51,26 +64,42 @@ export function TaskRow(props: {
       data-testid="task-row"
       data-task-title={task.title}
     >
-      {/* 阻止勾选冒泡到行（避免打开详情） */}
+      {/* 阻止勾选冒泡到行（避免打开详情）。
+          墓碑行（回收站）行首是多选框——完成勾选对已删任务无意义 */}
       <span onClick={(e) => e.stopPropagation()}>
-        <Checkbox
-          isSelected={task.completed}
-          onChange={() => void actions.toggleTask(task.id)}
-          data-testid={`check-${task.title}`}
-          aria-label={task.completed ? "标记未完成" : "标记完成"}
-        >
-          <Checkbox.Content>
-            <Checkbox.Control>
-              <Checkbox.Indicator />
-            </Checkbox.Control>
-          </Checkbox.Content>
-        </Checkbox>
+        {task.deleted ? (
+          <Checkbox
+            isSelected={trashSelected ?? false}
+            onChange={() => onToggleTrashSelect?.()}
+            data-testid={`trash-check-${task.title}`}
+            aria-label={trashSelected ? "取消选择" : "选择任务"}
+          >
+            <Checkbox.Content>
+              <Checkbox.Control>
+                <Checkbox.Indicator />
+              </Checkbox.Control>
+            </Checkbox.Content>
+          </Checkbox>
+        ) : (
+          <Checkbox
+            isSelected={task.completed}
+            onChange={() => void actions.toggleTask(task.id)}
+            data-testid={`check-${task.title}`}
+            aria-label={task.completed ? "标记未完成" : "标记完成"}
+          >
+            <Checkbox.Content>
+              <Checkbox.Control>
+                <Checkbox.Indicator />
+              </Checkbox.Control>
+            </Checkbox.Content>
+          </Checkbox>
+        )}
       </span>
 
       <div className="min-w-0 flex-1">
         <span
           className={`block truncate text-sm ${
-            task.completed ? "text-zinc-400 line-through" : ""
+            task.completed || task.deleted ? "text-zinc-400 line-through" : ""
           }`}
         >
           {task.title}
@@ -110,7 +139,13 @@ export function TaskRow(props: {
             fill="none"
             aria-hidden
           >
-            <path d="M4 2.5L8 6l-4 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            <path
+              d="M4 2.5L8 6l-4 3.5"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
           {progress.done}/{progress.total}
         </button>
@@ -138,14 +173,26 @@ export function TaskRow(props: {
       )}
 
       {task.deleted ? (
-        <Button
-          size="sm"
-          onPress={() => void actions.restoreTask(task.id)}
-          data-testid={`restore-${task.title}`}
-          className="shrink-0 opacity-0 transition group-hover:opacity-100"
-        >
-          恢复
-        </Button>
+        <>
+          <Button
+            size="sm"
+            onPress={() => void actions.restoreTask(task.id)}
+            data-testid={`restore-${task.title}`}
+            className="shrink-0 opacity-0 transition group-hover:opacity-100"
+          >
+            恢复
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onPress={() => actions.openPurgeConfirm([task.id])}
+            data-testid={`purge-${task.title}`}
+            aria-label="彻底删除"
+            className="shrink-0 text-zinc-400 opacity-0 transition hover:text-red-500 group-hover:opacity-100"
+          >
+            彻底删除
+          </Button>
+        </>
       ) : (
         <Button
           isIconOnly

@@ -125,6 +125,10 @@ impl Store for MemoryStore {
                     apply_task_record(&mut rec, p);
                     data.tasks.insert(op.entity_id.clone(), rec);
                 }
+                sync_core::Patch::TaskForget => {
+                    // 彻底删除：从权威投影移除记录本身；op 仍入账本（回放按序收敛）
+                    data.tasks.remove(&op.entity_id);
+                }
             }
             data.op_index.insert(op.op_id.clone(), seq);
             data.ops.push(SequencedOp {

@@ -163,6 +163,10 @@ pub struct TaskPatch {
 pub enum Patch {
     Project(ProjectPatch),
     Task(TaskPatch),
+    /// 彻底删除任务（回收站）：从投影中移除记录本身，与软删墓碑（`deleted` 标记）正交。
+    /// 无字段体；作为普通 op 参与 seq 全序回放——forget 之后的同实体编辑 op
+    /// 按 upsert 语义重建实体（如离线旧端迟到的推送），这是既有语义的自然延伸。
+    TaskForget,
 }
 
 impl Patch {
@@ -171,6 +175,8 @@ impl Patch {
         match self {
             Patch::Project(p) => *p == ProjectPatch::default(),
             Patch::Task(p) => *p == TaskPatch::default(),
+            // forget 无字段体，永远有效
+            Patch::TaskForget => false,
         }
     }
 }
