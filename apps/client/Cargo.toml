@@ -15,3 +15,16 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-notification = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+tauri-plugin-opener = "2"
+# generate_context! 宏（updater 插件配置）展开需要直接依赖 serde_json
+serde_json = "1"
+
+# Android 专用：应用内下载新版 APK 并拉起系统安装器（见 src/update_apk.rs）
+[target.'cfg(target_os = "android")'.dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+futures-util = "0.3"
+sha2 = "0.10"
+jni = "0.21"
+ndk-context = "0.1"

@@ -1,9 +1,12 @@
 import { useEffect } from "react";
 import { actions, useApp } from "./state/store";
+import { scheduleAutoUpdateCheck } from "./lib/updater";
 import { AuthScreen } from "./components/AuthScreen";
 import { Sidebar } from "./components/Sidebar";
 import { TaskList } from "./components/TaskList";
 import { TaskDetail } from "./components/TaskDetail";
+import { UpdateDialog } from "./components/UpdateDialog";
+import { WebUpdateBanner } from "./components/WebUpdateBanner";
 import { PurgeConfirmDialog } from "./components/PurgeConfirmDialog";
 import { WindowControls } from "./components/WindowControls";
 
@@ -15,12 +18,18 @@ export default function App() {
     void actions.boot();
   }, []);
 
+  // 进入主界面后延迟做一次静默更新检查（桌面/Android 走 updater，Web 检测服务端版本）
+  useEffect(() => {
+    if (phase === "ready") scheduleAutoUpdateCheck();
+  }, [phase]);
+
   return (
     <>
       <WindowControls />
       {phase === "boot" && <BootSplash />}
       {phase === "auth" && <AuthScreen />}
       {phase === "ready" && <MainLayout sidebarOpen={sidebarOpen} />}
+      <UpdateDialog />
     </>
   );
 }
@@ -39,6 +48,7 @@ function BootSplash() {
 function MainLayout({ sidebarOpen }: { sidebarOpen: boolean }) {
   return (
     <div className="flex h-full">
+      <WebUpdateBanner />
       {/* 移动端遮罩 */}
       {sidebarOpen && (
         <div

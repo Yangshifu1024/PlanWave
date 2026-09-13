@@ -49,6 +49,24 @@ interface AppState {
   sidebarOpen: boolean;
   /** 待确认的彻底删除（回收站）：用户勾选的根任务 id；null = 确认弹框关闭。 */
   purgeConfirm: string[] | null;
+  /** 应用更新（桌面/Android）：可用的新版本信息；null = 无。 */
+  updateInfo: {
+    version: string;
+    notes: string;
+    url?: string;
+    /** Android APK 的 sha256（latest.json 提供，下载后校验）。 */
+    sha256?: string;
+  } | null;
+  /** 更新流程阶段。 */
+  updatePhase: "idle" | "checking" | "downloading" | "ready";
+  /** 下载进度百分比（仅 downloading 阶段）。 */
+  updateProgress: number | null;
+  /** 手动检查失败的原因（自动检查静默失败不写此字段）。 */
+  updateError: string | null;
+  /** 手动检查的反馈文案（如「已是最新版本」）。 */
+  updateMessage: string | null;
+  /** Web 端：服务器部署版本新于页面构建版本，提示刷新。 */
+  webStale: boolean;
 }
 
 interface AppStore extends AppState {
@@ -72,6 +90,12 @@ export const useApp = create<AppStore>()((set) => ({
   detailOpen: false,
   sidebarOpen: false,
   purgeConfirm: null,
+  updateInfo: null,
+  updatePhase: "idle",
+  updateProgress: null,
+  updateError: null,
+  updateMessage: null,
+  webStale: false,
   setPartial: (p) => set(p),
 }));
 
