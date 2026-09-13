@@ -280,4 +280,42 @@ test.describe.serial("PlanWave Web E2E", () => {
     await ctx.close();
     await ctx2.close();
   });
+
+  test("项目右键菜单：改色 / 重命名 / 删除（danger 确认）", async ({ page }) => {
+    await login(page);
+
+    // 新建专用项目（独立名字避免与其他用例的 testid 冲突）
+    await page.getByTestId("add-project").click();
+    await page.getByTestId("new-project-name").fill("菜单测试");
+    await page.getByTestId("new-project-name").press("Enter");
+    await expect(page.getByTestId("nav-project-菜单测试")).toBeVisible({ timeout: 10_000 });
+
+    // ⋯ 按钮唤出菜单（全平台唯一触发入口）
+    await page.getByTestId("project-menu-菜单测试").click();
+    await expect(page.getByTestId("project-color-gray")).toBeVisible({ timeout: 5_000 });
+
+    // 改色为红：点色板色块，菜单收起，圆点 class 即时变化
+    await page.getByTestId("project-color-red").click();
+    await expect(page.getByTestId("nav-project-菜单测试").locator("span.rounded-full")).toHaveClass(
+      /bg-red-400/,
+      { timeout: 10_000 },
+    );
+
+    // 重命名：⋯ 按钮开菜单 → 重命名 → 弹窗预填、输入新名、回车提交
+    await page.getByTestId("project-menu-菜单测试").click();
+    await page.getByRole("menuitem", { name: "重命名" }).click();
+    await expect(page.getByTestId("rename-project-dialog")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByTestId("rename-project-input")).toHaveValue("菜单测试");
+    await page.getByTestId("rename-project-input").fill("菜单改名");
+    await page.getByTestId("rename-project-input").press("Enter");
+    await expect(page.getByTestId("rename-project-dialog")).toBeHidden({ timeout: 5_000 });
+    await expect(page.getByTestId("nav-project-菜单改名")).toBeVisible({ timeout: 10_000 });
+
+    // 删除：菜单红字项 → danger 确认（红色确认按钮）→ 项目消失
+    await page.getByTestId("project-menu-菜单改名").click();
+    await page.getByRole("menuitem", { name: "删除" }).click();
+    await expect(page.getByTestId("confirm-dialog")).toBeVisible({ timeout: 5_000 });
+    await acceptConfirm(page);
+    await expect(page.getByTestId("nav-project-菜单改名")).toBeHidden({ timeout: 10_000 });
+  });
 });

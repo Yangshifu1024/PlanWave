@@ -79,7 +79,7 @@ export function TaskList() {
     <>
       {/* 桌面端自绘标题栏：内容列顶部拖拽区（Windows 窗口控制按钮落在这里右上） */}
       {isDesktopApp && <div data-tauri-drag-region className="h-9 shrink-0" aria-hidden />}
-      <div className="flex items-center gap-2 px-6 pt-5">
+      <div className="flex items-center gap-1.5 px-4 pt-4 sm:gap-2 sm:px-6 sm:pt-5">
         <button
           className="rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-200/60 md:hidden dark:hover:bg-zinc-800"
           onClick={() => actions.toggleSidebar(true)}
@@ -100,9 +100,9 @@ export function TaskList() {
           onChange={(e) => actions.setSearch(e.target.value)}
           placeholder="搜索任务、备注、标签…"
           data-testid="search-input"
-          className="w-56"
+          className="min-w-0 flex-1 sm:w-56 sm:flex-none"
         />
-        <div className="ml-auto flex items-center gap-3">
+        <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-3">
           <SyncBadge />
           <Button
             isIconOnly
@@ -332,7 +332,7 @@ export function SyncBadge() {
   const s = map[status]!;
   return (
     <button
-      className="flex cursor-pointer items-center gap-1.5 rounded-lg px-1 py-0.5 text-xs text-zinc-400 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
+      className="flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-1 py-0.5 text-xs text-zinc-400 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
       data-testid="sync-badge"
       title={`同步状态：${s.text}（点击查看详情）`}
       onClick={() => void actions.openSyncSheet()}

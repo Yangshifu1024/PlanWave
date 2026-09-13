@@ -1,9 +1,10 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { Button, Input } from "@heroui/react";
+import { Button, Dropdown, DropdownItem, DropdownMenu, DropdownPopover, DropdownTrigger, Input, Label, Separator } from "@heroui/react";
 import type { ProjectRecord } from "../types";
 import { actions, useApp, type ViewKind } from "../state/store";
 import { countTasks } from "../lib/filters";
 import { isDesktopApp } from "../lib/platform";
+import { ProjectRenameDialog } from "./ProjectRenameDialog";
 import { Logo } from "../App";
 
 const SMART_LISTS: { key: "today" | "upcoming" | "all" | "trash"; label: string }[] = [
@@ -24,13 +25,16 @@ const DOT_COLORS: Record<string, string> = {
 };
 
 /** 左侧栏：智能清单 + 项目列表 + 设置/登出。桌面常驻，移动端抽屉。
- * 导航区滚动、底行固定：项目再多也不会把设置/登出推出视野。 */
+ * 导航区滚动、底行固定：项目再多也不会把设置/登出推出视野。
+ */
 export function Sidebar() {
   const projects = useApp((s) => s.projects);
   const tasks = useApp((s) => s.tasks);
   const view = useApp((s) => s.view);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
+  // 重命名接缝：菜单「重命名」记录目标项目，ProjectRenameDialog 在 aside 底部条件渲染。
+  const [renaming, setRenaming] = useState<ProjectRecord | null>(null);
 
   const counts = useMemo(() => {
     const map = new Map<string, number>();
@@ -87,14 +91,13 @@ export function Sidebar() {
         {projects
           .filter((p) => !p.deleted)
           .map((p) => (
-            <SideItem
+            <ProjectRow
               key={p.id}
+              project={p}
               active={view.kind === "project" && view.id === p.id}
-              label={<ProjectLabel project={p} />}
               count={counts.get(`project:${p.id}`) ?? 0}
-              testId={`nav-project-${p.name}`}
-              onClick={() => actions.setView({ kind: "project", id: p.id })}
-              onDelete={() => void actions.deleteProject(p.id)}
+              projects={projects}
+              onRename={(target) => setRenaming(target)}
             />
           ))}
 
@@ -153,26 +156,132 @@ export function Sidebar() {
           退出登录
         </Button>
       </div>
+
+      {/* 重命名对话框：菜单「重命名」→ 记录目标项目 → 此处条件渲染 */}
+      {renaming && <ProjectRenameDialog project={renaming} onClose={() => setRenaming(null)} />}
     </aside>
   );
 }
 
-function ProjectLabel({ project }: { project: ProjectRecord }) {
+/** 项目行：左键导航；⋯ 按钮唤出项目菜单（改色 / 重命名 / 删除）。
+ * 取代原 SideItem 在项目行的用法；智能清单仍由 SideItem 渲染。 */
+function ProjectRow(props: {
+  project: ProjectRecord;
+  active: boolean;
+  count: number;
+  /** 全量项目列表（含已删除）：菜单 action 前校验项目是否仍然存在。 */
+  projects: ProjectRecord[];
+  /** 重命名接缝：菜单 action 转交父层打开 ProjectRenameDialog。 */
+  onRename?: (p: ProjectRecord) => void;
+}) {
+  const p = props.project;
+  // 菜单受控开合：菜单项选中由 RAC 自动收起，但色块是 Popover 直下的普通按钮，需手动收起。
+  const [menuOpen, setMenuOpen] = useState(false);
+  // 菜单过期防护：打开期间项目被他端删除/软删时，action 静默忽略，不执行任何变更。
+  const isStale = !props.projects.some((x) => x.id === p.id && !x.deleted);
+
   return (
-    <span className="flex min-w-0 items-center gap-2">
-      <span className={`size-2 shrink-0 rounded-full ${DOT_COLORS[project.color] ?? DOT_COLORS.gray}`} />
-      <span className="truncate">{project.name}</span>
-    </span>
+    <div className="group flex items-center">
+      {/* 导航区：左键切换到该项目视图（testid 保持在可点击元素上，E2E 依赖）。 */}
+      <button
+        onClick={() => actions.setView({ kind: "project", id: p.id })}
+        data-testid={`nav-project-${p.name}`}
+        className={`flex min-w-0 flex-1 items-center justify-between rounded-lg px-3 py-1.5 text-sm outline-none transition ${
+          props.active
+            ? "bg-blue-500 text-white"
+            : "text-zinc-600 hover:bg-zinc-200/60 dark:text-zinc-300 dark:hover:bg-zinc-800"
+        }`}
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <span className={`size-2 shrink-0 rounded-full ${DOT_COLORS[p.color] ?? DOT_COLORS.gray}`} />
+          <span className="truncate">{p.name}</span>
+        </span>
+        {props.count > 0 && (
+          <span
+            className={`ml-1 text-xs ${props.active ? "text-blue-100" : "text-zinc-400"} group-hover:invisible`}
+          >
+            {props.count}
+          </span>
+        )}
+      </button>
+      {/* 项目菜单：⋯ 按钮为全平台唯一入口；DropdownTrigger 本身就是按钮（内部不可再嵌 Button，
+          否则 <button> 套 <button> 非法嵌套，React 恢复时会丢掉弹层内容）。 */}
+      <Dropdown isOpen={menuOpen} onOpenChange={setMenuOpen}>
+        <DropdownTrigger
+          aria-label="项目菜单"
+          data-testid={`project-menu-${p.name}`}
+          className="ml-1 flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-200/60 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+        >
+          ⋯
+        </DropdownTrigger>
+        <DropdownPopover placement="bottom end">
+          {/* 颜色区放 Menu 之外的 Popover 直下：RAC Menu 只渲染集合节点（Item/Section），
+              裸 div 会被集合构建剔除（首版「弹层开着但内容为空」的根因）。 */}
+          <div aria-label="项目颜色" className="flex items-center gap-1.5 px-2 pt-2">
+            <span className="text-xs font-medium text-zinc-400">颜色</span>
+            {Object.entries(DOT_COLORS).map(([color, cls]) => (
+              <button
+                key={color}
+                aria-label={`颜色：${color}`}
+                aria-pressed={p.color === color}
+                data-testid={`project-color-${color}`}
+                onClick={() => {
+                  if (isStale) return;
+                  void actions.setProjectColor(p.id, color);
+                  setMenuOpen(false); // 色块非菜单项，RAC 不会自动收起，手动关
+                }}
+                className={`flex size-6 cursor-pointer items-center justify-center rounded-full text-[10px] leading-none text-white transition hover:scale-110 ${cls} ${
+                  p.color === color
+                    ? "ring-2 ring-blue-500 ring-offset-1 ring-offset-white dark:ring-offset-zinc-900"
+                    : ""
+                }`}
+              >
+                {p.color === color ? "✓" : ""}
+              </button>
+            ))}
+          </div>
+          <Separator className="mt-2" />
+          <DropdownMenu>
+            {/* 动作挂在 Item 自身的 onAction 上：RAC Menu 本身无 onAction prop（传了会被静默忽略），
+                这是首版「点重命名无反应」的根因；文字用官方 Label 吃 hover/焦点态，删除用官方 danger 变体；
+                菜单项选中后由 RAC 自动收起菜单。 */}
+            <DropdownItem
+              key="rename"
+              onAction={() => {
+                if (isStale) return;
+                props.onRename?.(p);
+              }}
+            >
+              <Label>重命名</Label>
+            </DropdownItem>
+            <DropdownItem
+              key="delete"
+              variant="danger"
+              onAction={() => {
+                if (isStale) return;
+                actions.requestConfirm({
+                  title: "删除项目",
+                  message: `项目「${p.name}」及其任务将移入回收站，可在回收站恢复。`,
+                  confirmLabel: "删除",
+                  danger: true,
+                  action: () => void actions.deleteProject(p.id),
+                });
+              }}
+            >
+              <Label>删除</Label>
+            </DropdownItem>
+          </DropdownMenu>
+        </DropdownPopover>
+      </Dropdown>
+    </div>
   );
 }
-
 function SideItem(props: {
   active: boolean;
   label: ReactNode;
   count: number;
   testId: string;
   onClick: () => void;
-  onDelete?: () => void;
 }) {
   return (
     <div
@@ -195,15 +304,6 @@ function SideItem(props: {
         >
           {props.count}
         </span>
-      )}
-      {props.onDelete && (
-        <button
-          onClick={props.onDelete}
-          aria-label="删除项目"
-          className={`ml-1 text-xs invisible group-hover:visible ${props.active ? "text-blue-100" : "text-zinc-400"} hover:text-red-500`}
-        >
-          ×
-        </button>
       )}
     </div>
   );
