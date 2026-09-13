@@ -153,3 +153,18 @@ describe("visibleTree（子任务树）", () => {
     expect(subtaskProgress(tasks, "p")).toEqual({ done: 1, total: 2 });
   });
 });
+
+describe("visibleTree（展开回归）", () => {
+  it("父任务在视图内时，不匹配筛选的子任务也挂在父下（展开非空）", () => {
+    // 「最近 7 天」视图：父任务周五到期可见，子任务无截止日不匹配筛选
+    const friday = now.getTime() + 5 * DAY;
+    const tasks = [
+      task({ id: "p", title: "父：周五到期", due_date: friday }),
+      task({ id: "c1", title: "子1：无截止", parent_id: "p" }),
+      task({ id: "c2", title: "子2：无截止", parent_id: "p" }),
+    ];
+    const tree = visibleTree(tasks, { kind: "smart", smart: "upcoming" }, "", now);
+    expect(tree).toHaveLength(1);
+    expect(tree[0]!.children.map((c) => c.id)).toEqual(["c1", "c2"]);
+  });
+});
