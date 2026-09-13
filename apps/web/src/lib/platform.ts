@@ -24,6 +24,11 @@ export const isWindowsApp = isDesktopApp && /Windows/i.test(navigator.userAgent)
 
 const API_BASE_KEY = "planwave.api_base";
 
+/** 地址归一化：去首尾空白与尾部斜杠。 */
+export function normalizeApiBase(base: string): string {
+  return base.trim().replace(/\/+$/, "");
+}
+
 /** 未做任何覆盖时的默认地址。 */
 export const DEFAULT_API_BASE: string =
   (import.meta.env.VITE_API_BASE as string | undefined) ??
@@ -44,12 +49,12 @@ export function getApiBase(): string {
 /**
  * 保存用户输入的服务器地址（去尾部斜杠；空值回退默认地址并清除覆盖）。
  * 返回是否发生变化：变化意味着切换数据空间，调用方必须清空本地缓存与
- * token 后重载页面——WASM 客户端是单例，构造后地址不可更换。
+ * token，并通过客户端的 `setApiBase` 热切换地址（WASM 客户端是单例，
+ * 构造后默认地址不可更换，热切换是唯一入口）。
  */
 export function applyServerAddress(base: string): boolean {
-  const trimmed = base.trim().replace(/\/+$/, "");
+  const next = normalizeApiBase(base) || null;
   const stored = getStoredApiBase();
-  const next = trimmed || null;
   if ((next ?? DEFAULT_API_BASE) === (stored ?? DEFAULT_API_BASE)) return false;
   if (next === null) localStorage.removeItem(API_BASE_KEY);
   else localStorage.setItem(API_BASE_KEY, next);

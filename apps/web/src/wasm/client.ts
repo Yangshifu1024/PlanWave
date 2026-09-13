@@ -52,6 +52,7 @@ export interface WasmClientApi {
     deviceName?: string,
   ): Promise<void>;
   logout(): void;
+  setApiBase(base: string): void;
   start(): Promise<void>;
   mutate(entityKind: "task" | "project", entityId: string, patchJson: string): Promise<void>;
   refresh(): Promise<void>;
@@ -72,6 +73,7 @@ export function wrapClient(raw: PlanWaveClient): WasmClientApi {
       await raw.login(username, password, deviceId, deviceName ?? null);
     },
     logout: () => raw.logout(),
+    setApiBase: (base) => raw.set_api_base(base),
     start: () => raw.start(),
     mutate: (entityKind, entityId, patchJson) => raw.mutate(entityKind, entityId, patchJson),
     refresh: () => raw.refresh(),

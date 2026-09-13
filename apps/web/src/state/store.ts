@@ -5,7 +5,7 @@
 
 import { create } from "zustand";
 import type { ProjectRecord, SyncDetails, TaskRecord } from "../types";
-import { isTauri, applyServerAddress } from "../lib/platform";
+import { isTauri, applyServerAddress, getApiBase } from "../lib/platform";
 import { ensureTypedClient, hasTokens, type WasmClientApi } from "../wasm/client";
 import { requestReminderPermission, rescheduleReminders } from "../lib/reminders";
 import { nextOccurrenceMs } from "../lib/recurrence";
@@ -147,9 +147,11 @@ export const actions = {
     const baseChanged = server !== undefined && applyServerAddress(server);
     const client = await ensureTypedClient();
     if (baseChanged) {
-      // 地址变化 = 换数据空间：清空旧 token 与本地库（本会话无旧连接，安全）
+      // 地址变化 = 换数据空间：清空旧 token 与本地库，并把 WASM 单例的
+      // 传输地址热切换到新值（否则 status() 仍打在构造时的旧地址上）
       localStorage.removeItem("planwave.tokens");
       await client.clearLocal();
+      client.setApiBase(getApiBase());
       useApp.getState().setPartial({ hasAccount: false });
     }
 

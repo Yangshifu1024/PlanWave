@@ -18,7 +18,9 @@ pub struct TokenPair {
 
 #[derive(Debug, Clone)]
 pub struct HttpTransport {
-    api_base: String,
+    /// 共享句柄：Client 内的 transport 与 PlanWaveClient 持有的副本指向同一
+    /// 地址，`set_api_base` 一处更新、两处生效（登录屏切换服务器用）。
+    api_base: std::rc::Rc<std::cell::RefCell<String>>,
 }
 
 fn net_err(e: impl std::fmt::Display) -> ClientError {
@@ -59,7 +61,18 @@ async fn refresh_tokens(api_base: &str) -> Result<bool, ClientError> {
 
 impl HttpTransport {
     pub fn new(api_base: String) -> Self {
-        Self { api_base }
+        Self {
+            api_base: std::rc::Rc::new(std::cell::RefCell::new(api_base)),
+        }
+    }
+
+    /// 运行时切换服务器地址（调用方须先清空 token 与本地库）。
+    pub fn set_api_base(&self, api_base: String) {
+        *self.api_base.borrow_mut() = api_base;
+    }
+
+    fn base(&self) -> String {
+        self.api_base.borrow().clone()
     }
 
     /// 发送带鉴权的 JSON 请求；401 时刷新 token 重试一次。
@@ -75,7 +88,7 @@ impl HttpTransport {
 
         let mut resp = self.send_raw(method, path, auth.as_deref(), body).await?;
 
-        if resp.status() == 401 && allow_refresh && refresh_tokens(&self.api_base).await? {
+        if resp.status() == 401 && allow_refresh && refresh_tokens(&self.base()).await? {
             let fresh = tokens();
             let auth = fresh.as_ref().map(|t| t.access_token.clone());
             resp = self.send_raw(method, path, auth.as_deref(), body).await?;
@@ -101,7 +114,7 @@ impl HttpTransport {
         auth: Option<&str>,
         body: Option<&(impl Serialize + ?Sized)>,
     ) -> Result<Response, ClientError> {
-        let url = format!("{}{path}", self.api_base);
+        let url = format!("{}{path}", self.base());
         let builder = match method {
             "POST" => Request::post(&url),
             _ => Request::get(&url),

@@ -80,6 +80,12 @@ impl PlanWaveClient {
         self.transport.logout();
     }
 
+    /// 运行时切换服务器地址（登录屏改地址后调用）。
+    /// 调用方须先清空 token 与本地库：地址对应数据空间，混用会串数据。
+    pub fn set_api_base(&self, api_base: String) {
+        self.transport.set_api_base(api_base);
+    }
+
     /// 启动引擎：确保设备标识、追平远端（新设备走快照引导）。
     pub async fn start(&self) -> Result<(), JsValue> {
         match self.client.start().await {
