@@ -37,3 +37,4 @@ Thumbs.db
 /node_modules
 /packages/client-core/node_modules
 *.log
+.codewave/

@@ -16,8 +16,13 @@ body {
   @apply bg-zinc-100 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100;
 }
 
-/* 细滚动条 */
+/* 细滚动条（例外：HeroUI ScrollShadow 用同机制隐藏自身滚动条，
+   通配选择器会以更高优先级覆盖它，导致 Tab 列表在布局抖动瞬间闪现滚动条） */
 * {
   scrollbar-width: thin;
   scrollbar-color: rgb(161 161 170 / 0.4) transparent;
+}
+.scroll-shadow--hide-scrollbar {
+  scrollbar-width: none;
+  scrollbar-color: auto;
 }

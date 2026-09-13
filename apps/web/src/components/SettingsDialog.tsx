@@ -103,45 +103,83 @@ export function SettingsDialog() {
     >
       <Modal.Backdrop>
         <Modal.Container placement="center">
-          <Modal.Dialog data-testid="settings-dialog">
+          {/* 宽度取三面板最大需宽：切换 Tab 时宽度恒定，避免 Tab 列表被瞬间挤压出现滚动条闪现 */}
+          <Modal.Dialog data-testid="settings-dialog" className="max-w-md min-w-96">
             <Modal.Header>
               <Modal.Heading className="text-lg font-bold">设置</Modal.Heading>
             </Modal.Header>
             <Modal.Body>
+              {/* 横向 Tabs：ListContainer 提供底色容器，Indicator 渲染选中 Tab 背后的高亮指示器 */}
               <Tabs
                 selectedKey={tab}
                 onSelectionChange={(key) => setTab(key as TabKey)}
                 aria-label="设置分类"
               >
-                <Tabs.List>
-                  <Tabs.Tab id="appearance">外观</Tabs.Tab>
-                  {showNetwork && <Tabs.Tab id="network">网络</Tabs.Tab>}
-                  <Tabs.Tab id="about">关于</Tabs.Tab>
-                </Tabs.List>
-                <Tabs.Panel id="appearance">
+                <Tabs.ListContainer>
+                  <Tabs.List>
+                    <Tabs.Tab id="appearance">
+                      <Tabs.Indicator />
+                      外观
+                    </Tabs.Tab>
+                    {showNetwork && (
+                      <Tabs.Tab id="network">
+                        <Tabs.Indicator />
+                        网络
+                      </Tabs.Tab>
+                    )}
+                    <Tabs.Tab id="about">
+                      <Tabs.Indicator />
+                      关于
+                    </Tabs.Tab>
+                  </Tabs.List>
+                </Tabs.ListContainer>
+                {/* 统一三个面板的最小高度：面板为条件渲染，高度不随 Tab 切换跳动（min-h 覆盖常规最高态「网络」） */}
+                <Tabs.Panel id="appearance" className="min-h-60 p-3">
+                  {/* HeroUI v3 Radio 为复合组件：Content 是可点击区，Control+Indicator 提供圆圈与选中态 */}
+                  {/* 卡片式单选项（对齐官方 Delivery & Payment 示例：竖排 + 圆角边框 + 选中高亮） */}
                   <RadioGroup
                     value={theme}
                     onChange={(v) => actions.setTheme(v as Theme)}
+                    className="gap-2"
                     data-testid="settings-appearance"
                   >
+                    {/* 卡片样式必须挂在可点的 Radio.Content 上（Radio 根容器不可点），
+                        w-full 铺满整卡，保证点卡片任意位置都能切换 */}
                     {THEME_OPTIONS.map((o) => (
                       <Radio key={o.value} value={o.value}>
-                        {o.label}
+                        <Radio.Content
+                          data-testid={`theme-option-${o.value}`}
+                          className="w-full rounded-lg border border-zinc-200 p-3 hover:bg-zinc-50 data-[selected=true]:border-blue-500 data-[selected=true]:bg-blue-50 dark:border-zinc-700 dark:hover:bg-zinc-800/60 dark:data-[selected=true]:border-blue-400 dark:data-[selected=true]:bg-blue-950/40"
+                        >
+                          <Radio.Control>
+                            <Radio.Indicator />
+                          </Radio.Control>
+                          {o.label}
+                        </Radio.Content>
                       </Radio>
                     ))}
                   </RadioGroup>
                 </Tabs.Panel>
                 {showNetwork && (
-                  <Tabs.Panel id="network">
+                  <Tabs.Panel id="network" className="min-h-60 p-3">
                     <div className="space-y-3 text-sm">
                       <RadioGroup
                         value={proxyMode}
                         onChange={(v) => applyProxyMode(v as ProxyMode)}
+                        className="gap-2"
                         data-testid="settings-proxy-mode"
                       >
                         {PROXY_OPTIONS.map((o) => (
                           <Radio key={o.value} value={o.value}>
-                            {o.label}
+                            <Radio.Content
+                              data-testid={`proxy-mode-option-${o.value}`}
+                              className="w-full rounded-lg border border-zinc-200 p-3 hover:bg-zinc-50 data-[selected=true]:border-blue-500 data-[selected=true]:bg-blue-50 dark:border-zinc-700 dark:hover:bg-zinc-800/60 dark:data-[selected=true]:border-blue-400 dark:data-[selected=true]:bg-blue-950/40"
+                            >
+                              <Radio.Control>
+                                <Radio.Indicator />
+                              </Radio.Control>
+                              {o.label}
+                            </Radio.Content>
                           </Radio>
                         ))}
                       </RadioGroup>
@@ -187,7 +225,7 @@ export function SettingsDialog() {
                     </div>
                   </Tabs.Panel>
                 )}
-                <Tabs.Panel id="about">
+                <Tabs.Panel id="about" className="min-h-60 p-3">
                   <div className="flex flex-col items-center gap-2 py-2 text-center">
                     <Logo className="size-10 text-blue-500" />
                     <div className="text-sm font-semibold">PlanWave</div>
