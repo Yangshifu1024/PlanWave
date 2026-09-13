@@ -8,6 +8,8 @@ import { TaskDetail } from "./components/TaskDetail";
 import { UpdateDialog } from "./components/UpdateDialog";
 import { WebUpdateBanner } from "./components/WebUpdateBanner";
 import { PurgeConfirmDialog } from "./components/PurgeConfirmDialog";
+import { AppConfirmDialog } from "./components/ConfirmDialog";
+import { SettingsDialog } from "./components/SettingsDialog";
 import { WindowControls } from "./components/WindowControls";
 
 export default function App() {
@@ -30,6 +32,8 @@ export default function App() {
       {phase === "auth" && <AuthScreen />}
       {phase === "ready" && <MainLayout sidebarOpen={sidebarOpen} />}
       <UpdateDialog />
+      <AppConfirmDialog />
+      <SettingsDialog />
     </>
   );
 }
@@ -57,9 +61,9 @@ function MainLayout({ sidebarOpen }: { sidebarOpen: boolean }) {
           data-testid="sidebar-backdrop"
         />
       )}
-      {/* 侧栏容器：移动端抽屉，桌面常驻 */}
+      {/* 侧栏容器：移动端抽屉，桌面常驻；滚动收敛到 Sidebar 内部导航区，底行固定 */}
       <div
-        className={`fixed inset-y-0 left-0 z-30 flex flex-col overflow-y-auto bg-zinc-100 transition-transform duration-200 dark:bg-zinc-900 md:static md:z-auto md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-30 flex flex-col bg-zinc-100 transition-transform duration-200 dark:bg-zinc-900 md:static md:z-auto md:translate-x-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >

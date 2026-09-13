@@ -83,7 +83,14 @@ export function TaskRow(props: {
         ) : (
           <Checkbox
             isSelected={task.completed}
-            onChange={() => void actions.toggleTask(task.id)}
+            onChange={() =>
+              actions.requestConfirm({
+                title: task.completed ? "取消完成" : "完成任务",
+                message: `将「${task.title}」标记为${task.completed ? "未完成" : "已完成"}？`,
+                confirmLabel: task.completed ? "取消完成" : "完成",
+                action: () => actions.toggleTask(task.id),
+              })
+            }
             data-testid={`check-${task.title}`}
             aria-label={task.completed ? "标记未完成" : "标记完成"}
           >
@@ -197,7 +204,14 @@ export function TaskRow(props: {
         <Button
           isIconOnly
           variant="ghost"
-          onPress={() => void actions.deleteTask(task.id)}
+          onPress={() =>
+            actions.requestConfirm({
+              title: "删除任务",
+              message: `将「${task.title}」移到回收站？可在回收站中恢复。`,
+              confirmLabel: "移到回收站",
+              action: () => actions.deleteTask(task.id),
+            })
+          }
           aria-label="移到回收站"
           className="shrink-0 text-zinc-400 opacity-0 transition hover:text-red-500 group-hover:opacity-100"
         >

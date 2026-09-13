@@ -6,7 +6,8 @@
 //! 注意：本模块被 store 单向引用（updater → store），不得反向被 store 引入。
 
 import { getApiBase, isDesktopApp, isTauri } from "./platform";
-import { isWebStale, isNewerVersion, shouldPromptUpdate } from "./updateVersion";
+import { isNewerVersion, isWebStale, shouldPromptUpdate } from "./updateVersion";
+import { getProxySettings, isValidProxyUrl } from "./proxySettings";
 import { useApp } from "../state/store";
 
 const LATEST_MANIFEST_URL =
@@ -26,6 +27,22 @@ export function scheduleAutoUpdateCheck(): void {
   window.setTimeout(() => {
     void checkForUpdates(false);
   }, AUTO_CHECK_DELAY_MS);
+}
+
+/** 桌面更新请求的代理选项：自定义档走自定义代理，系统档读取 OS 代理设置。 */
+async function updaterProxy(): Promise<{ proxy?: string } | undefined> {
+  const { mode, url } = getProxySettings();
+  if (mode === "custom" && isValidProxyUrl(url)) return { proxy: url.trim() };
+  if (mode === "system") {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const sys = await invoke<string | null>("system_proxy_url");
+      if (sys) return { proxy: sys };
+    } catch {
+      /* 读取失败 = 直连 */
+    }
+  }
+  return undefined;
 }
 
 /** 检查更新入口。manual = 用户手动触发（显示错误与「已是最新」反馈，无视跳过）。 */
@@ -75,7 +92,7 @@ export async function downloadAndInstallUpdate(): Promise<void> {
   const { check } = await import("@tauri-apps/plugin-updater");
   let update;
   try {
-    update = await check();
+    update = await check(await updaterProxy());
   } catch (e) {
     useApp.getState().setPartial({ updatePhase: "idle", updateError: String(e) });
     return;
@@ -156,7 +173,7 @@ export async function currentAppVersion(): Promise<string> {
 
 async function checkDesktop(manual: boolean): Promise<void> {
   const { check } = await import("@tauri-apps/plugin-updater");
-  const update = await check();
+  const update = await check(await updaterProxy());
   const setPartial = useApp.getState().setPartial;
   if (!update) {
     setPartial({
