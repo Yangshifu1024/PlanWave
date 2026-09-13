@@ -143,13 +143,14 @@ export function SettingsDialog() {
                     className="gap-2"
                     data-testid="settings-appearance"
                   >
+                    {/* 卡片样式必须挂在可点的 Radio.Content 上（Radio 根容器不可点），
+                        w-full 铺满整卡，保证点卡片任意位置都能切换 */}
                     {THEME_OPTIONS.map((o) => (
-                      <Radio
-                        key={o.value}
-                        value={o.value}
-                        className="rounded-lg border border-zinc-200 p-3 hover:bg-zinc-50 data-[selected=true]:border-blue-500 data-[selected=true]:bg-blue-50 dark:border-zinc-700 dark:hover:bg-zinc-800/60 dark:data-[selected=true]:border-blue-400 dark:data-[selected=true]:bg-blue-950/40"
-                      >
-                        <Radio.Content data-testid={`theme-option-${o.value}`}>
+                      <Radio key={o.value} value={o.value}>
+                        <Radio.Content
+                          data-testid={`theme-option-${o.value}`}
+                          className="w-full rounded-lg border border-zinc-200 p-3 hover:bg-zinc-50 data-[selected=true]:border-blue-500 data-[selected=true]:bg-blue-50 dark:border-zinc-700 dark:hover:bg-zinc-800/60 dark:data-[selected=true]:border-blue-400 dark:data-[selected=true]:bg-blue-950/40"
+                        >
                           <Radio.Control>
                             <Radio.Indicator />
                           </Radio.Control>
@@ -169,12 +170,11 @@ export function SettingsDialog() {
                         data-testid="settings-proxy-mode"
                       >
                         {PROXY_OPTIONS.map((o) => (
-                          <Radio
-                            key={o.value}
-                            value={o.value}
-                            className="rounded-lg border border-zinc-200 p-3 hover:bg-zinc-50 data-[selected=true]:border-blue-500 data-[selected=true]:bg-blue-50 dark:border-zinc-700 dark:hover:bg-zinc-800/60 dark:data-[selected=true]:border-blue-400 dark:data-[selected=true]:bg-blue-950/40"
-                          >
-                            <Radio.Content data-testid={`proxy-mode-option-${o.value}`}>
+                          <Radio key={o.value} value={o.value}>
+                            <Radio.Content
+                              data-testid={`proxy-mode-option-${o.value}`}
+                              className="w-full rounded-lg border border-zinc-200 p-3 hover:bg-zinc-50 data-[selected=true]:border-blue-500 data-[selected=true]:bg-blue-50 dark:border-zinc-700 dark:hover:bg-zinc-800/60 dark:data-[selected=true]:border-blue-400 dark:data-[selected=true]:bg-blue-950/40"
+                            >
                               <Radio.Control>
                                 <Radio.Indicator />
                               </Radio.Control>
