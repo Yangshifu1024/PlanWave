@@ -134,6 +134,20 @@ impl IdbStorage {
         Ok(())
     }
 
+    /// 删除单条记录（彻底删除 forget op 专用；其余路径均为 upsert）。
+    async fn kv_delete(&self, table: &str, key: &str) -> Result<(), ClientError> {
+        let tx = self
+            .db
+            .transaction(&[table], TransactionMode::ReadWrite)
+            .map_err(db_err)?;
+        let store = tx.object_store(table).map_err(db_err)?;
+        store
+            .delete(wasm_bindgen::JsValue::from(key))
+            .map_err(db_err)?;
+        tx.await.map_err(db_err)?;
+        Ok(())
+    }
+
     async fn kv_scan(&self, table: &str) -> Result<Vec<String>, ClientError> {
         let tx = self
             .db
@@ -371,6 +385,14 @@ impl ClientStorage for IdbStorage {
                         .map_err(db_err)?;
                     task_cache.insert(s.op.entity_id.clone(), Some(rec));
                 }
+                Patch::TaskForget => {
+                    // 彻底删除：移除本地记录；页内缓存同步置空，
+                    // 同页后续同实体 op 按回放语义以默认值重建（upsert）
+                    tasks
+                        .delete(wasm_bindgen::JsValue::from(&s.op.entity_id))
+                        .map_err(db_err)?;
+                    task_cache.insert(s.op.entity_id.clone(), None);
+                }
                 Patch::Project(p) => {
                     let rec = match project_cache.remove(&s.op.entity_id) {
                         Some(cached) => cached,
@@ -433,6 +455,9 @@ impl ClientStorage for IdbStorage {
     /// 本地 op：立即应用 + 标记已见 + 入待推送队列 + 推进时钟。
     async fn apply_local(&self, op: &Op) -> Result<(), ClientError> {
         match &op.patch {
+            Patch::TaskForget => {
+                self.kv_delete("tasks", &op.entity_id).await?;
+            }
             Patch::Task(p) => {
                 let current: Option<TaskRecord> = self
                     .kv_get("tasks", &op.entity_id)
@@ -535,6 +560,10 @@ impl ClientStorage for IdbStorage {
         let pending = self.pending().await?;
         for op in &pending {
             match &op.patch {
+                Patch::TaskForget => {
+                    // 快照已不含被彻底删除的实体，重新应用 = 再次移除（幂等）
+                    self.kv_delete("tasks", &op.entity_id).await?;
+                }
                 Patch::Task(p) => {
                     let current: Option<TaskRecord> = self
                         .kv_get("tasks", &op.entity_id)

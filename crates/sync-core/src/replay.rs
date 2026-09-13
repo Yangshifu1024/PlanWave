@@ -94,6 +94,60 @@ mod tests {
         SequencedOp { seq: seq_no, op }
     }
 
+    fn forget_op(op_id: &str, entity_id: &str) -> Op {
+        Op {
+            op_id: op_id.into(),
+            device_id: "d1".into(),
+            lamport: 1,
+            entity_id: entity_id.into(),
+            patch: Patch::TaskForget,
+            client_time_ms: 0,
+        }
+    }
+
+    #[test]
+    fn forget_removes_entity_in_total_order() {
+        // upsert → forget：实体从回放状态中消失（与「服务端投影已删」的快照一致）
+        let mut s = ReplayState::new();
+        let entity = "e2a4b98f-5e64-4a5e-b3c3-9c19a8770004";
+        s.apply(&seq(
+            1,
+            task_op("0d9d4a2f-2f2a-4b0e-9d8e-1f0a2b3c0010", entity, "v1"),
+        ))
+        .unwrap();
+        s.apply(&seq(
+            2,
+            forget_op("0d9d4a2f-2f2a-4b0e-9d8e-1f0a2b3c0011", entity),
+        ))
+        .unwrap();
+        assert!(!s.tasks.contains_key(entity));
+
+        // forget 之后的编辑 op（如离线旧端迟到的推送）按 upsert 语义重建实体——
+        // 这是全序回放既有语义的自然延伸，不是「复活」
+        s.apply(&seq(
+            3,
+            task_op("0d9d4a2f-2f2a-4b0e-9d8e-1f0a2b3c0012", entity, "v3"),
+        ))
+        .unwrap();
+        assert_eq!(s.tasks[entity].title, "v3");
+    }
+
+    #[test]
+    fn forget_unknown_entity_is_noop() {
+        let mut s = ReplayState::new();
+        s.apply(&seq(
+            1,
+            forget_op(
+                "0d9d4a2f-2f2a-4b0e-9d8e-1f0a2b3c0013",
+                "e2a4b98f-5e64-4a5e-b3c3-9c19a8770005",
+            ),
+        ))
+        .unwrap();
+        assert!(s.tasks.is_empty());
+        assert_eq!(s.applied_count, 1);
+        assert_eq!(s.last_seq, 1);
+    }
+
     #[test]
     fn replay_in_order_produces_lww_state() {
         let mut s = ReplayState::new();

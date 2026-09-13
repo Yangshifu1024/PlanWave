@@ -478,3 +478,77 @@ async fn snapshot_reflects_projection_with_tombstones_and_auth() {
     assert_eq!(tasks.len(), 1);
     assert_eq!(tasks[0]["deleted"], json!(true));
 }
+
+#[tokio::test]
+async fn forget_purge_removes_projection_and_snapshot_excludes_it() {
+    let app = App::new().await;
+    let token = app.register_and_login("device-1").await;
+    let task = uuid::Uuid::new_v4().to_string();
+    let purged = uuid::Uuid::new_v4().to_string();
+    let ops = vec![
+        task_op(
+            "device-1",
+            uuid::Uuid::new_v4().to_string().as_str(),
+            &task,
+            json!({"type":"task","title":"保留的墓碑"}),
+        ),
+        task_op(
+            "device-1",
+            uuid::Uuid::new_v4().to_string().as_str(),
+            &task,
+            json!({"type":"task","deleted":true}),
+        ),
+        task_op(
+            "device-1",
+            uuid::Uuid::new_v4().to_string().as_str(),
+            &purged,
+            json!({"type":"task","title":"被彻底删除"}),
+        ),
+        task_op(
+            "device-1",
+            uuid::Uuid::new_v4().to_string().as_str(),
+            &purged,
+            json!({"type":"task_forget"}),
+        ),
+    ];
+    let res = app
+        .http
+        .post(app.url("/sync/push"))
+        .bearer_auth(&token)
+        .json(&json!({ "device_id": "device-1", "ops": ops }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200, "{}", res.text().await.unwrap());
+
+    // 快照仍含软删墓碑，但不再包含被彻底删除的实体（投影行已删）
+    let res = app
+        .http
+        .get(app.url("/sync/snapshot"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200, "{}", res.text().await.unwrap());
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(body["seq"], json!(4));
+    let tasks = body["tasks"].as_array().unwrap();
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0]["id"], json!(task));
+    assert_eq!(tasks[0]["deleted"], json!(true));
+
+    // oplog 保留全部历史（含 forget）：其他端按序回放/拉取后同样收敛到「已清除」
+    let res = app
+        .http
+        .get(app.url("/sync/pull?since=0"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200, "{}", res.text().await.unwrap());
+    let body: Value = res.json().await.unwrap();
+    let pulled = body["ops"].as_array().unwrap();
+    assert_eq!(pulled.len(), 4);
+    assert_eq!(pulled[3]["patch"]["type"], json!("task_forget"));
+    assert_eq!(pulled[3]["entity_id"], json!(purged));
+}

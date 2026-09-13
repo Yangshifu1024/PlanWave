@@ -52,6 +52,9 @@ impl FakeServer {
                         .or_insert_with(|| task_defaults(&op.entity_id));
                     apply_task_record(rec, p);
                 }
+                Patch::TaskForget => {
+                    self.tasks.remove(&op.entity_id);
+                }
             }
             self.log.push(SequencedOp {
                 seq,
@@ -182,6 +185,9 @@ impl ClientStorage for MemStorage {
                         .or_insert_with(|| sync_core::task_defaults(&s.op.entity_id));
                     sync_core::apply_task_record(rec, p);
                 }
+                sync_core::Patch::TaskForget => {
+                    inner.tasks.remove(&s.op.entity_id);
+                }
                 sync_core::Patch::Project(p) => {
                     let rec = inner
                         .projects
@@ -199,6 +205,9 @@ impl ClientStorage for MemStorage {
     async fn apply_local(&self, op: &Op) -> Result<(), ClientError> {
         let mut inner = self.inner.borrow_mut();
         match &op.patch {
+            sync_core::Patch::TaskForget => {
+                inner.tasks.remove(&op.entity_id);
+            }
             sync_core::Patch::Task(p) => {
                 let rec = inner
                     .tasks
@@ -252,6 +261,10 @@ impl ClientStorage for MemStorage {
         let pending = inner.queue.clone();
         for op in &pending {
             match &op.patch {
+                sync_core::Patch::TaskForget => {
+                    // 快照已不含被彻底删除的实体，重新应用 = 再次移除（幂等）
+                    inner.tasks.remove(&op.entity_id);
+                }
                 sync_core::Patch::Task(p) => {
                     let rec = inner
                         .tasks

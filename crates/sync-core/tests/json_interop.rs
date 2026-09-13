@@ -170,6 +170,26 @@ fn recurrence_and_parent_id_serialize_with_expected_shape() {
 }
 
 #[test]
+fn task_forget_roundtrip_with_expected_shape() {
+    // 回收站「彻底删除」op：无字段体，type 标签即全部（两端接口冻结凭证）
+    let v = serde_json::to_value(&Patch::TaskForget).unwrap();
+    assert_eq!(v, json!({ "type": "task_forget" }));
+    let de: Patch = serde_json::from_value(v).unwrap();
+    assert_eq!(de, Patch::TaskForget);
+
+    // forget op 不受「空 patch」校验限制（无字段体是它的常态）
+    let op = Op {
+        op_id: "0d9d4a2f-2f2a-4b0e-9d8e-1f0a2b3c4d5f".into(),
+        device_id: "device-a".into(),
+        lamport: 1,
+        entity_id: "e2a4b98f-5e64-4a5e-b3c3-9c19a8778a11".into(),
+        patch: Patch::TaskForget,
+        client_time_ms: 1_700_000_000_000,
+    };
+    op.validate().unwrap();
+}
+
+#[test]
 fn recurrence_empty_weekdays_omitted_and_defaults_apply() {
     let rule = RecurrenceRule {
         freq: RecurrenceFreq::Daily,
