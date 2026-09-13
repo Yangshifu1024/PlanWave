@@ -108,6 +108,64 @@ test.describe.serial("PlanWave Web E2E", () => {
     await page.getByTestId("restore-写周报").click();
     // 恢复涉及与防抖刷新的并发 reload，宽限到 8s 防止偶发竞态
     await expect(row(page, "写周报")).not.toBeVisible({ timeout: 8_000 });
+
+    // 彻底删除（详情面板入口）：确认后从回收站永久消失
+    await page.getByTestId("nav-project-工作").click();
+    await expect(row(page, "写周报")).toBeVisible({ timeout: 10_000 });
+    await row(page, "写周报").click();
+    await page.getByTestId("detail-delete").click();
+    await expect(row(page, "写周报")).not.toBeVisible();
+    await page.getByTestId("nav-trash").click();
+    await expect(row(page, "写周报")).toBeVisible({ timeout: 10_000 });
+    await row(page, "写周报").click();
+    await page.getByTestId("detail-purge").click();
+    await expect(page.getByTestId("purge-modal")).toBeVisible();
+    await expect(page.getByTestId("purge-modal")).toContainText("不可恢复");
+    await page.getByTestId("purge-confirm").click();
+    await expect(row(page, "写周报")).not.toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("empty-state")).toBeVisible();
+
+    // 勾选批量删除：再造两个墓碑 → 行首选择框勾选 → 批量彻底删除
+    await page.getByTestId("nav-project-工作").click();
+    for (const title of ["任务甲", "任务乙"]) {
+      await page.getByTestId("new-task-input").fill(title);
+      await page.getByTestId("new-task-input").press("Enter");
+      await expect(page.getByTestId("new-task-modal")).toBeVisible({ timeout: 10_000 });
+      await page.getByTestId("new-task-save").click();
+      await expect(row(page, title)).toBeVisible({ timeout: 10_000 });
+      await row(page, title).click();
+      await page.getByTestId("detail-delete").click();
+      await expect(row(page, title)).not.toBeVisible();
+    }
+    await page.getByTestId("nav-trash").click();
+    await expect(row(page, "任务甲")).toBeVisible({ timeout: 10_000 });
+    await page.getByTestId("trash-check-任务甲").click();
+    await page.getByTestId("trash-check-任务乙").click();
+    await expect(page.getByTestId("trash-bulk-bar")).toBeVisible();
+    await page.getByTestId("trash-bulk-delete").click();
+    await expect(page.getByTestId("purge-modal")).toBeVisible();
+    await page.getByTestId("purge-confirm").click();
+    await expect(row(page, "任务甲")).not.toBeVisible({ timeout: 10_000 });
+    await expect(row(page, "任务乙")).not.toBeVisible();
+    await expect(page.getByTestId("empty-state")).toBeVisible();
+
+    // 清空回收站：再造一个墓碑 → 清空按钮 → 全部消失
+    await page.getByTestId("nav-project-工作").click();
+    await page.getByTestId("new-task-input").fill("任务丙");
+    await page.getByTestId("new-task-input").press("Enter");
+    await expect(page.getByTestId("new-task-modal")).toBeVisible({ timeout: 10_000 });
+    await page.getByTestId("new-task-save").click();
+    await expect(row(page, "任务丙")).toBeVisible({ timeout: 10_000 });
+    await row(page, "任务丙").click();
+    await page.getByTestId("detail-delete").click();
+    await expect(row(page, "任务丙")).not.toBeVisible();
+    await page.getByTestId("nav-trash").click();
+    await expect(row(page, "任务丙")).toBeVisible({ timeout: 10_000 });
+    await page.getByTestId("trash-clear").click();
+    await expect(page.getByTestId("purge-modal")).toBeVisible();
+    await page.getByTestId("purge-confirm").click();
+    await expect(row(page, "任务丙")).not.toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("empty-state")).toBeVisible();
   });
 
   test("双端通过手动刷新同步", async ({ browser }) => {
@@ -151,6 +209,28 @@ test.describe.serial("PlanWave Web E2E", () => {
         { timeout: 15_000, intervals: [500, 1_000] },
       )
       .toBeGreaterThan(0);
+
+    // A 软删后从回收站彻底删除 → B 手动刷新后永久消失
+    await row(a, "刷新同步任务").click();
+    await a.getByTestId("detail-delete").click();
+    await expect(row(a, "刷新同步任务")).not.toBeVisible();
+    await a.getByTestId("nav-trash").click();
+    await expect(row(a, "刷新同步任务")).toBeVisible({ timeout: 10_000 });
+    await a.getByTestId("trash-check-刷新同步任务").click();
+    await a.getByTestId("trash-bulk-delete").click();
+    await expect(a.getByTestId("purge-modal")).toBeVisible();
+    await a.getByTestId("purge-confirm").click();
+    await expect(row(a, "刷新同步任务")).not.toBeVisible({ timeout: 10_000 });
+    await expect
+      .poll(
+        async () => {
+          await b.getByTestId("refresh-button").click();
+          await b.waitForTimeout(250);
+          return row(b, "刷新同步任务").count();
+        },
+        { timeout: 15_000, intervals: [500, 1_000] },
+      )
+      .toBe(0);
 
     await ctxA.close();
     await ctxB.close();

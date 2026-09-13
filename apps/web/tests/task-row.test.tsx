@@ -11,6 +11,7 @@ vi.mock("../src/state/store", () => ({
     toggleTask: vi.fn(),
     deleteTask: vi.fn(),
     restoreTask: vi.fn(),
+    openPurgeConfirm: vi.fn(),
   },
   useApp: (sel: (s: { selectedTaskId: string | null }) => string | null) =>
     sel({ selectedTaskId: null }),
@@ -38,9 +39,7 @@ import { actions } from "../src/state/store";
 
 describe("TaskRow", () => {
   it("渲染标题，勾选框触发 toggleTask", () => {
-    const { container } = render(
-      <TaskRow task={task({})} showProject={false} projects={[]} />,
-    );
+    const { container } = render(<TaskRow task={task({})} showProject={false} projects={[]} />);
     expect(screen.getByText("写周报")).toBeInTheDocument();
     // jsdom 不实现 label 点击转发，直接点底层 input（label 点击路径由 E2E 覆盖）
     fireEvent.click(container.querySelector('input[type="checkbox"]')!);
@@ -56,6 +55,35 @@ describe("TaskRow", () => {
     render(<TaskRow task={task({ deleted: true })} showProject={false} projects={[]} />);
     fireEvent.click(screen.getByTestId("restore-写周报"));
     expect(vi.mocked(actions.restoreTask)).toHaveBeenCalledWith("t1");
+  });
+
+  it("墓碑行：完成勾选框被选择框替代，标题带删除线", () => {
+    const { container } = render(
+      <TaskRow task={task({ deleted: true })} showProject={false} projects={[]} />,
+    );
+    expect(screen.queryByTestId("check-写周报")).not.toBeInTheDocument();
+    expect(screen.getByText("写周报")).toHaveClass("line-through");
+    expect(container.querySelector('input[type="checkbox"]')).toBeInTheDocument();
+  });
+
+  it("回收站选择框点击触发 onToggleTrashSelect", () => {
+    const onToggleTrashSelect = vi.fn();
+    const { container } = render(
+      <TaskRow
+        task={task({ deleted: true })}
+        showProject={false}
+        projects={[]}
+        onToggleTrashSelect={onToggleTrashSelect}
+      />,
+    );
+    fireEvent.click(container.querySelector('input[type="checkbox"]')!);
+    expect(onToggleTrashSelect).toHaveBeenCalledTimes(1);
+  });
+
+  it("点击彻底删除按钮触发 openPurgeConfirm", () => {
+    render(<TaskRow task={task({ deleted: true })} showProject={false} projects={[]} />);
+    fireEvent.click(screen.getByTestId("purge-写周报"));
+    expect(vi.mocked(actions.openPurgeConfirm)).toHaveBeenCalledWith(["t1"]);
   });
 
   it("优先级高时显示红色标记", () => {

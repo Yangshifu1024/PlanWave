@@ -45,16 +45,13 @@ export interface WasmClientApi {
     deviceId: string,
     deviceName?: string,
   ): Promise<void>;
-  login(
-    username: string,
-    password: string,
-    deviceId: string,
-    deviceName?: string,
-  ): Promise<void>;
+  login(username: string, password: string, deviceId: string, deviceName?: string): Promise<void>;
   logout(): void;
   setApiBase(base: string): void;
   start(): Promise<void>;
   mutate(entityKind: "task" | "project", entityId: string, patchJson: string): Promise<void>;
+  /** 彻底删除（回收站）：与软删墓碑不同，记录从所有端与服务器永久移除。 */
+  forget(entityKind: "task", entityId: string): Promise<void>;
   refresh(): Promise<void>;
   listProjects(): Promise<ProjectRecord[]>;
   listTasks(): Promise<TaskRecord[]>;
@@ -76,6 +73,7 @@ export function wrapClient(raw: PlanWaveClient): WasmClientApi {
     setApiBase: (base) => raw.set_api_base(base),
     start: () => raw.start(),
     mutate: (entityKind, entityId, patchJson) => raw.mutate(entityKind, entityId, patchJson),
+    forget: (entityKind, entityId) => raw.forget(entityKind, entityId),
     refresh: () => raw.refresh(),
     listProjects: async () => JSON.parse(await raw.list_projects()) as ProjectRecord[],
     listTasks: async () => JSON.parse(await raw.list_tasks()) as TaskRecord[],

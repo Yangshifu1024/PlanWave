@@ -1,5 +1,5 @@
-import { useMemo, useState, type FormEvent } from "react";
-import { Button, Input } from "@heroui/react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { Button, Checkbox, Input } from "@heroui/react";
 import { actions, useApp, type ViewKind } from "../state/store";
 import { subtaskProgress, visibleTree } from "../lib/filters";
 import { usePullToRefresh } from "../lib/usePullToRefresh";
@@ -30,10 +30,30 @@ export function TaskList() {
   const [pendingTitle, setPendingTitle] = useState<string | null>(null);
   // 折叠的父任务 id 集合（列表本地状态）
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  // 回收站多选：勾选的墓碑任务 id（列表本地状态）
+  const [trashSelected, setTrashSelected] = useState<Set<string>>(() => new Set());
 
   const tree = useMemo(() => visibleTree(tasks, view, search), [tasks, view, search]);
   const isTrash = view.kind === "smart" && view.smart === "trash";
   const { ref: listRef, pullPx, phase } = usePullToRefresh(() => actions.refresh());
+  const rowCount = tree.reduce((n, node) => n + 1 + node.children.length, 0);
+
+  // 任务集合变化（彻底删除/恢复）后清理失效勾选项：
+  // 恢复会让墓碑变回活任务，必须同步移出勾选集，避免误删活任务
+  useEffect(() => {
+    setTrashSelected((prev) => {
+      const next = new Set([...prev].filter((id) => tasks.some((t) => t.id === id && t.deleted)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [tasks]);
+
+  const allTrashChecked = rowCount > 0 && tree.every(({ task }) => trashSelected.has(task.id));
+  const toggleAllTrash = () => {
+    setTrashSelected(() => {
+      if (allTrashChecked) return new Set();
+      return new Set(tree.map(({ task }) => task.id));
+    });
+  };
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -54,8 +74,6 @@ export function TaskList() {
       return next;
     });
   };
-
-  const rowCount = tree.reduce((n, node) => n + 1 + node.children.length, 0);
 
   return (
     <>
@@ -124,6 +142,64 @@ export function TaskList() {
             fullWidth
           />
         </form>
+      )}
+
+      {/* 回收站工具行：全选 + 清空回收站 */}
+      {isTrash && rowCount > 0 && (
+        <div className="flex items-center gap-3 px-6 pt-3">
+          <Checkbox
+            isSelected={allTrashChecked}
+            onChange={toggleAllTrash}
+            data-testid="trash-select-all"
+            aria-label="全选回收站任务"
+          >
+            <Checkbox.Content>
+              <Checkbox.Control>
+                <Checkbox.Indicator />
+              </Checkbox.Control>
+            </Checkbox.Content>
+          </Checkbox>
+          <span className="text-xs text-zinc-400">全选</span>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-auto text-zinc-400 hover:text-red-500"
+            onPress={() =>
+              actions.openPurgeConfirm(tasks.filter((t) => t.deleted).map((t) => t.id))
+            }
+            data-testid="trash-clear"
+          >
+            清空回收站
+          </Button>
+        </div>
+      )}
+
+      {/* 回收站批量操作条：有勾选项时浮出 */}
+      {isTrash && trashSelected.size > 0 && (
+        <div
+          className="mx-6 mt-3 flex items-center gap-3 rounded-xl bg-red-50 px-3 py-2 dark:bg-red-500/10"
+          data-testid="trash-bulk-bar"
+        >
+          <span className="text-sm text-zinc-500 dark:text-zinc-300">
+            已选 {trashSelected.size} 项
+          </span>
+          <Button
+            size="sm"
+            className="ml-auto bg-red-500 text-white hover:bg-red-600"
+            onPress={() => actions.openPurgeConfirm([...trashSelected])}
+            data-testid="trash-bulk-delete"
+          >
+            删除所选
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onPress={() => setTrashSelected(new Set())}
+            data-testid="trash-bulk-cancel"
+          >
+            取消
+          </Button>
+        </div>
       )}
 
       {/* 下拉刷新指示器：绝对定位于列表上方，随拉拽距离渐显 */}
@@ -199,6 +275,21 @@ export function TaskList() {
                   progress={subtaskProgress(tasks, task.id)}
                   collapsed={children.length > 0 ? collapsed.has(task.id) : undefined}
                   onToggleCollapse={children.length > 0 ? () => toggleCollapse(task.id) : undefined}
+                  trashSelected={trashSelected.has(task.id)}
+                  onToggleTrashSelect={
+                    isTrash
+                      ? () =>
+                          setTrashSelected((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(task.id)) {
+                              next.delete(task.id);
+                            } else {
+                              next.add(task.id);
+                            }
+                            return next;
+                          })
+                      : undefined
+                  }
                 />
                 {childNodes.map((child) => (
                   <TaskRow

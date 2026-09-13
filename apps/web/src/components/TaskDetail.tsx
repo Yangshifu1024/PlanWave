@@ -179,13 +179,24 @@ function DetailBody({
         </button>
         <div className="ml-auto flex items-center gap-2">
           {task.deleted ? (
-            <Button
-              size="sm"
-              onPress={() => void actions.restoreTask(task.id)}
-              data-testid="detail-restore"
-            >
-              从回收站恢复
-            </Button>
+            <>
+              <Button
+                size="sm"
+                onPress={() => void actions.restoreTask(task.id)}
+                data-testid="detail-restore"
+              >
+                从回收站恢复
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onPress={() => actions.openPurgeConfirm([task.id])}
+                data-testid="detail-purge"
+                className="text-zinc-400 hover:text-red-500"
+              >
+                彻底删除
+              </Button>
+            </>
           ) : (
             <>
               <Button
@@ -227,8 +238,10 @@ function DetailBody({
         aria-label="任务标题"
       />
 
+      {/* 墓碑（回收站中的已删任务）不可再修改完成状态 */}
       <Switch
         isSelected={task.completed}
+        isDisabled={task.deleted}
         onChange={() => void actions.toggleTask(task.id)}
         data-testid="detail-completed"
       >
