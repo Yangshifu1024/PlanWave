@@ -8,20 +8,17 @@
 //! - 关闭语义：Windows 关闭 = 隐藏到托盘（退出仅经托盘菜单）；
 //!   macOS/Linux 保持原生关闭行为（关闭 = 关窗，Linux 下即退出）。
 
+#[cfg(desktop)]
+mod proxied_http;
 mod update_apk;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![
-            update_apk::download_update_apk,
-            update_apk::install_update_apk,
-            update_apk::is_appimage,
-        ])
         .on_window_event(|window, event| {
             #[cfg(target_os = "windows")]
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -39,7 +36,26 @@ pub fn run() {
             #[cfg(any(target_os = "windows", target_os = "macos"))]
             setup_tray(app)?;
             Ok(())
-        })
+        });
+
+    // 命令注册必须一次完成（invoke_handler 是整体替换，不可拆分调用）
+    #[cfg(desktop)]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        update_apk::download_update_apk,
+        update_apk::install_update_apk,
+        update_apk::is_appimage,
+        proxied_http::http_request,
+        proxied_http::test_proxy,
+        proxied_http::system_proxy_url,
+    ]);
+    #[cfg(not(desktop))]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        update_apk::download_update_apk,
+        update_apk::install_update_apk,
+        update_apk::is_appimage,
+    ]);
+
+    builder
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
