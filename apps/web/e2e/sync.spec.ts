@@ -290,8 +290,8 @@ test.describe.serial("PlanWave Web E2E", () => {
     await page.getByTestId("new-project-name").press("Enter");
     await expect(page.getByTestId("nav-project-菜单测试")).toBeVisible({ timeout: 10_000 });
 
-    // 右键唤出菜单（contextMenu）
-    await page.getByTestId("nav-project-菜单测试").click({ button: "right" });
+    // ⋯ 按钮唤出菜单（全平台唯一触发入口）
+    await page.getByTestId("project-menu-菜单测试").click();
     await expect(page.getByTestId("project-color-gray")).toBeVisible({ timeout: 5_000 });
 
     // 改色为红：点色板色块，菜单收起，圆点 class 即时变化
