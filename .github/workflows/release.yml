@@ -29,21 +29,21 @@ jobs:
     name: Docker 镜像（server）
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}-server
           tags: |
             type=semver,pattern={{version}}
             type=raw,value=latest
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           file: deploy/server.Dockerfile
@@ -57,21 +57,21 @@ jobs:
     name: Docker 镜像（web）
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}-web
           tags: |
             type=semver,pattern={{version}}
             type=raw,value=latest
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           file: deploy/web.Dockerfile
@@ -87,9 +87,9 @@ jobs:
     name: 前端产物（各客户端共用）
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
@@ -108,7 +108,7 @@ jobs:
         run: pnpm build:wasm
       - name: 构建前端
         run: pnpm --filter @planwave/web build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: web-dist
           path: apps/web/dist/
@@ -119,9 +119,9 @@ jobs:
     runs-on: windows-latest
     needs: [web-dist]
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
@@ -129,13 +129,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: pnpm install --frozen-lockfile
       - name: 下载前端产物
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: web-dist
           path: apps/web/dist
       - name: Tauri build（NSIS）
         run: pnpm --filter @planwave/client exec tauri build --config tauri.ci.conf.json --bundles nsis
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: client-windows
           path: target/release/bundle/nsis/*.exe
@@ -146,9 +146,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: [web-dist]
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
@@ -160,13 +160,13 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf libfuse2
       - run: pnpm install --frozen-lockfile
       - name: 下载前端产物
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: web-dist
           path: apps/web/dist
       - name: Tauri build（AppImage + deb）
         run: pnpm --filter @planwave/client exec tauri build --config tauri.ci.conf.json --bundles appimage,deb
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: client-linux
           path: |
@@ -182,9 +182,9 @@ jobs:
       # 映射成 job 级 env，供步骤 if 判断是否配置了签名
       APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
@@ -194,7 +194,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: pnpm install --frozen-lockfile
       - name: 下载前端产物
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: web-dist
           path: apps/web/dist
@@ -230,7 +230,7 @@ jobs:
       - name: Tauri build（universal dmg，未签名）
         if: env.APPLE_CERTIFICATE == ''
         run: pnpm --filter @planwave/client exec tauri build --target universal-apple-darwin --config tauri.ci.conf.json --bundles dmg
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: client-macos
           path: target/universal-apple-darwin/release/bundle/dmg/*.dmg
@@ -241,13 +241,13 @@ jobs:
     runs-on: ubuntu-latest
     needs: [web-dist]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 17
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
@@ -257,7 +257,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: pnpm install --frozen-lockfile
       - name: 下载前端产物
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: web-dist
           path: apps/web/dist
@@ -286,7 +286,7 @@ jobs:
             echo -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode -o "$TAURI_ANDROID_KEYSTORE_PATH"
           fi
           pnpm --filter @planwave/client exec tauri android build --apk --config tauri.ci.conf.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: client-android
           path: apps/client/gen/android/app/build/outputs/apk/universal/release/*.apk
@@ -300,9 +300,9 @@ jobs:
       # 映射成 job 级 env，供步骤 if 判断是否配置了签名
       IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
@@ -312,7 +312,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: pnpm install --frozen-lockfile
       - name: 下载前端产物
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: web-dist
           path: apps/web/dist
@@ -357,13 +357,13 @@ jobs:
     runs-on: ubuntu-latest
     needs: [docker-server, docker-web, desktop-windows, desktop-linux, desktop-macos, android]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # 生成发布日志需要完整历史与上一个 tag
           fetch-depth: 0
       # 只取客户端产物（client-*）；buildx 自动上传的 *.dockerbuild 构建记录
       # 不需要，且全量下载在某些 artifact 上会反复重试失败
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: client-*
           merge-multiple: true
@@ -400,7 +400,7 @@ jobs:
           } > body.md
           cat body.md
       - name: 上传到 Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: upload/*
           body_path: body.md

@@ -63,7 +63,7 @@ export function AuthScreen() {
       if (probeIdRef.current === id) setServerCheck(result);
     }, 500);
     return () => clearTimeout(timer);
-  }, [server, baseValid]);
+  }, [base, baseValid]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
