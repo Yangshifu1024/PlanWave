@@ -518,6 +518,9 @@ jobs:
       - name: 上传到 Release
         uses: softprops/action-gh-release@v3
         with:
+          # 草稿态：维护者核对产物与更新说明后手动 Publish；
+          # 草稿不出现在 releases/latest 端点，发布前 latest.json 对客户端不可见
+          draft: true
           files: upload/*
           body_path: body.md
           generate_release_notes: true

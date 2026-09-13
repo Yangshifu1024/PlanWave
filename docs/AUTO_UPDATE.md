@@ -8,6 +8,9 @@ Android 端提供应用内下载 APK 并拉起系统安装器，Web 端在服务
 - 发版：`v*` 标签触发 release.yml，各端产物上传 GitHub Release；桌面端在配置了
   签名密钥后额外产出 **minisign 签名文件（\*.sig）与 macOS `.app.tar.gz`**，
   并由 release job 聚合生成 **`latest.json`** 更新清单一并上传。
+- **Release 以草稿（draft）创建**：流水线跑完后由维护者在 GitHub Releases 页核对
+  产物与更新说明并手动 Publish；发布前 `latest.json` 对客户端不可见——人工确认
+  是更新上线前的最后一道闸。
 - 更新源（桌面）：`https://github.com/<repo>/releases/latest/download/latest.json`
   （`apps/client/tauri.conf.json` 的 `plugins.updater.endpoints`）。
 - 客户端行为矩阵：

@@ -5,7 +5,7 @@ description: Cut a PlanWave release — verify the full gate, bump the version e
 
 # PlanWave release
 
-A release is: bump the version everywhere → commit on `main` → push → push a `v*` tag. The tag push is what triggers `.github/workflows/release.yml`, which builds GHCR docker images, Windows NSIS, macOS dmg (universal), Linux AppImage+deb, Android APK — and an iOS ipa only when the `IOS_CERTIFICATE` secret is configured (otherwise it's skipped with a notice). Pushing a new tag cancels an in-flight older release (workflow concurrency).
+A release is: bump the version everywhere → commit on `main` → push → push a `v*` tag → **manually publish the draft release** after CI finishes. The tag push is what triggers `.github/workflows/release.yml`, which builds GHCR docker images, Windows NSIS, macOS dmg (universal), Linux AppImage+deb, Android APK — and an iOS ipa only when the `IOS_CERTIFICATE` secret is configured (otherwise it's skipped with a notice). Desktop artifacts get minisign-signed and a `latest.json` update manifest is generated when `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)` is configured (see docs/AUTO_UPDATE.md). Pushing a new tag cancels an in-flight older release (workflow concurrency).
 
 **This skill always stops before pushing.** The tag push ships the release and is effectively irreversible (artifacts are published, the version is consumed). Follow AGENTS.md: never push `main` or a tag without the user's explicit yes, even if every check is green.
 
@@ -70,3 +70,13 @@ git push origin vX.Y.Z
 ```
 
 Then offer to monitor the release run (`gh run list --workflow=release.yml`, `gh run watch <run-id>`). The full pipeline takes a while — five platforms build in parallel after the shared web-dist job.
+
+## 7. Publish the draft release (manual, after CI is green)
+
+The release job creates the GitHub Release **as a draft** with all artifacts and
+`latest.json` attached. Drafts are invisible to the `releases/latest` endpoint,
+so the update manifest only goes live when a human publishes. After the run:
+
+1. Open the Releases page and review the draft: assets complete (installer + `.sig`
+   - `latest.json`), update notes accurate.
+2. Press **Publish release** — from that moment clients receive the update prompt.
