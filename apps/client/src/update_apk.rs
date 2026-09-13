@@ -50,7 +50,7 @@ async fn download_impl(
     use futures_util::StreamExt;
     use sha2::{Digest, Sha256};
     use std::io::Write;
-    use tauri::Manager;
+    use tauri::{Emitter, Manager};
 
     /// 进度事件节流：每累计 256KiB 上报一次（避免数千次 IPC/重渲染）。
     const PROGRESS_STEP: u64 = 256 * 1024;
