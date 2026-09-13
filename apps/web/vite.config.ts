@@ -1,10 +1,17 @@
+import { readFileSync } from "node:fs";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import wasm from "vite-plugin-wasm";
 
+const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf-8")) as {
+  version: string;
+};
+
 export default defineConfig({
   plugins: [react(), tailwindcss(), wasm()],
+  // 页面构建版本：与 /about 的服务端版本对比，驱动 Web 端「刷新以更新」提示
+  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   clearScreen: false,
   build: {
     target: "es2022",

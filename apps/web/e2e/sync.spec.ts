@@ -38,6 +38,8 @@ test.describe.serial("PlanWave Web E2E", () => {
     await page.getByTestId("auth-password").fill(PASS);
     await page.getByTestId("auth-submit").click();
     await expect(page.getByTestId("view-title")).toBeVisible({ timeout: 15_000 });
+    // 页面与服务器同 tag 构建：不应出现「服务端已更新」刷新横幅
+    await expect(page.getByTestId("web-update-banner")).toHaveCount(0);
     await expect(page.getByTestId("sync-badge")).toContainText("已同步", { timeout: 15_000 });
 
     // 新建项目

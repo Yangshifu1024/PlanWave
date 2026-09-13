@@ -126,7 +126,7 @@ macOS / iOS 的签名与公证配置见 [docs/APPLE_SIGNING.md](docs/APPLE_SIGNI
 
 发版流程：`pnpm bump <版本>` 统一改全仓库版本号并刷新两个锁文件 → 提交 → 打 `v<版本>` 标签推送。Release 产物命名与其他端一致（APK 重命名为 `PlanWave_<版本>_universal.apk`，其内部 versionName/versionCode 亦对齐 tag）；发布日志自动列出与上一个 tag 之间的全部 commit，GitHub 自动生成的说明（含 Full Changelog）追加其后。
 
-CI（GitHub Actions）：push/PR 只跑 lint + test（fmt、clippy、Rust 全量测试连 MySQL 容器、前端 lint/test/构建、Playwright E2E）；**仅 `v*` 标签**触发 [release.yml](.github/workflows/release.yml)——server/web 镜像推送到 GHCR，五端客户端（Windows NSIS / macOS dmg / Linux AppImage+deb / Android APK / iOS ipa）上传 GitHub Release。
+CI（GitHub Actions）：push/PR 只跑 lint + test（fmt、clippy、Rust 全量测试连 MySQL 容器、前端 lint/test/构建、Playwright E2E）；**仅 `v*` 标签**触发 [release.yml](.github/workflows/release.yml)——server/web 镜像推送到 GHCR，五端客户端（Windows NSIS / macOS dmg / Linux AppImage+deb / Android APK / iOS ipa）上传 GitHub Release。配置 updater 签名密钥后（见 [docs/AUTO_UPDATE.md](docs/AUTO_UPDATE.md)），桌面包带 minisign 签名并生成 `latest.json` 自动更新清单：Windows/macOS/Linux AppImage 支持应用内自动更新，Android 提示应用内下载 APK，Web 端在服务端更新后提示刷新。
 
 ## 部署
 

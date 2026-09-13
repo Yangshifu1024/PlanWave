@@ -3,6 +3,8 @@
 # - 五端客户端（Windows / macOS / Linux / Android / iOS）打包并上传 GitHub Release
 # - macOS / iOS 签名与公证：见 docs/APPLE_SIGNING.md（配置对应 Secrets 即可；
 #   未配置时对应平台自动跳过签名，产物仍会上传）
+# - 桌面自动更新：配置 TAURI_SIGNING_PRIVATE_KEY(_PASSWORD) 后（见 docs/AUTO_UPDATE.md），
+#   桌面包带 minisign 签名并生成 latest.json 更新清单；未配置时自动跳过
 name: Release
 
 on:
@@ -118,6 +120,8 @@ jobs:
     name: 客户端（Windows NSIS）
     runs-on: windows-latest
     needs: [web-dist]
+    outputs:
+      updater: ${{ steps.updater-flag.outputs.updater }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -133,18 +137,37 @@ jobs:
         with:
           name: web-dist
           path: apps/web/dist
+      - id: updater-flag
+        name: 检测 updater 签名密钥
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: echo "updater=$([ -n "$TAURI_SIGNING_PRIVATE_KEY" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
       - name: Tauri build（NSIS）
-        run: pnpm --filter @planwave/client exec tauri build --config tauri.ci.conf.json --bundles nsis
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          ARGS="--config tauri.ci.conf.json --bundles nsis"
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            ARGS="$ARGS --config tauri.updater.conf.json"
+          fi
+          pnpm --filter @planwave/client exec tauri build $ARGS
       - uses: actions/upload-artifact@v7
         with:
           name: client-windows
-          path: target/release/bundle/nsis/*.exe
+          path: |
+            target/release/bundle/nsis/*.exe
+            target/release/bundle/nsis/*.exe.sig
           if-no-files-found: error
 
   desktop-linux:
     name: 客户端（Linux AppImage/deb）
     runs-on: ubuntu-latest
     needs: [web-dist]
+    outputs:
+      updater: ${{ steps.updater-flag.outputs.updater }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -164,13 +187,27 @@ jobs:
         with:
           name: web-dist
           path: apps/web/dist
+      - id: updater-flag
+        name: 检测 updater 签名密钥
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: echo "updater=$([ -n "$TAURI_SIGNING_PRIVATE_KEY" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
       - name: Tauri build（AppImage + deb）
-        run: pnpm --filter @planwave/client exec tauri build --config tauri.ci.conf.json --bundles appimage,deb
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          ARGS="--config tauri.ci.conf.json --bundles appimage,deb"
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            ARGS="$ARGS --config tauri.updater.conf.json"
+          fi
+          pnpm --filter @planwave/client exec tauri build $ARGS
       - uses: actions/upload-artifact@v7
         with:
           name: client-linux
           path: |
             target/release/bundle/appimage/*.AppImage
+            target/release/bundle/appimage/*.AppImage.sig
             target/release/bundle/deb/*.deb
           if-no-files-found: error
 
@@ -178,6 +215,8 @@ jobs:
     name: 客户端（macOS dmg，签名+公证）
     runs-on: macos-latest
     needs: [web-dist]
+    outputs:
+      updater: ${{ steps.updater-flag.outputs.updater }}
     env:
       # 映射成 job 级 env，供步骤 if 判断是否配置了签名
       APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -198,6 +237,12 @@ jobs:
         with:
           name: web-dist
           path: apps/web/dist
+      - id: updater-flag
+        name: 检测 updater 签名密钥（仅在 Apple 签名可用时才产出 updater 产物）
+        if: env.APPLE_CERTIFICATE != ''
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: echo "updater=$([ -n "$TAURI_SIGNING_PRIVATE_KEY" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
       # 签名 + 公证配置见 docs/APPLE_SIGNING.md；未配置 Secrets 时跳过签名仍可出包
       - name: 导入 Developer ID 证书
         if: env.APPLE_CERTIFICATE != ''
@@ -216,9 +261,24 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN
           security list-keychain -d user -s $KEYCHAIN login.keychain-db
       # 未配置签名 Secrets 时 APPLE_* 会是空字符串，tauri 会误判「要签名」，
-      # 所以拆成两个互斥步骤：配置了就走签名+公证，没配置就出未签名 dmg
+      # 所以拆成互斥步骤。updater 需要 .app.tar.gz + minisign 签名（tauri.updater.conf.json），
+      # 且仅在有 Apple 签名时产出（未签名 app 的自动更新在 macOS 上不可用）
+      - name: Tauri build（universal dmg + app，签名+公证+updater）
+        if: env.APPLE_CERTIFICATE != '' && steps.updater-flag.outputs.updater == 'true'
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: >
+          pnpm --filter @planwave/client exec tauri build --target universal-apple-darwin
+          --config tauri.ci.conf.json --config tauri.updater.conf.json --bundles dmg,app
       - name: Tauri build（universal dmg，签名+公证）
-        if: env.APPLE_CERTIFICATE != ''
+        if: env.APPLE_CERTIFICATE != '' && steps.updater-flag.outputs.updater != 'true'
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -233,7 +293,10 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: client-macos
-          path: target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          path: |
+            target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz
+            target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
           if-no-files-found: error
 
   android:
@@ -369,16 +432,46 @@ jobs:
           merge-multiple: true
           path: release
       # merge-multiple 会保留各 artifact 内部的目录结构（appimage/ deb/ …），
-      # 统一摊平到 upload/ 再上传；APK 按版本重命名（与其他端产物命名对齐）
+      # 统一摊平到 upload/ 再上传；APK 按版本重命名（与其他端产物命名对齐）；
+      # 桌面端 updater 签名文件（*.sig）与 macOS .app.tar.gz 一并摊平并统一命名，
+      # 供 latest.json 引用（URL = Release 资产直链）
       - name: 整理产物
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p upload
-          find release -type f \( -name "*.exe" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.dmg" -o -name "*.apk" \) \
+          find release -type f \( \
+            -name "*.exe" -o -name "*.exe.sig" -o \
+            -name "*.AppImage" -o -name "*.AppImage.sig" -o \
+            -name "*.app.tar.gz" -o -name "*.app.tar.gz.sig" -o \
+            -name "*.deb" -o -name "*.dmg" -o -name "*.apk" \) \
             -exec cp {} upload/ \;
           for f in upload/*.apk; do
             [ -e "$f" ] || continue
             mv "$f" "upload/PlanWave_${VERSION}_universal.apk"
+          done
+          for f in upload/*_x64-setup.exe; do
+            [ -e "$f" ] || continue
+            mv "$f" "upload/PlanWave_${VERSION}_x64-setup.exe"
+          done
+          for f in upload/*_x64-setup.exe.sig; do
+            [ -e "$f" ] || continue
+            mv "$f" "upload/PlanWave_${VERSION}_x64-setup.exe.sig"
+          done
+          for f in upload/*.app.tar.gz; do
+            [ -e "$f" ] || continue
+            mv "$f" "upload/PlanWave_${VERSION}_aarch64.app.tar.gz"
+          done
+          for f in upload/*.app.tar.gz.sig; do
+            [ -e "$f" ] || continue
+            mv "$f" "upload/PlanWave_${VERSION}_aarch64.app.tar.gz.sig"
+          done
+          for f in upload/*.AppImage; do
+            [ -e "$f" ] || continue
+            mv "$f" "upload/PlanWave_${VERSION}_amd64.AppImage"
+          done
+          for f in upload/*.AppImage.sig; do
+            [ -e "$f" ] || continue
+            mv "$f" "upload/PlanWave_${VERSION}_amd64.AppImage.sig"
           done
           ls -la upload/
       # 直推 main 没有 PR，generate_release_notes 只会给出 Full Changelog 链接；
@@ -399,6 +492,38 @@ jobs:
             git log --no-decorate --format='- %s (%h)' "$RANGE"
           } > body.md
           cat body.md
+      # 桌面三端都配置了 updater 签名密钥时，生成自动更新清单 latest.json
+      # 并随 Release 上传（客户端 updater 端点即该资产的直链）
+      - name: 生成 latest.json（自动更新清单）
+        if: |
+          needs.desktop-windows.outputs.updater == 'true' &&
+          needs.desktop-linux.outputs.updater == 'true' &&
+          needs.desktop-macos.outputs.updater == 'true'
+        env:
+          REPO: ${{ github.repository }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          BASE="https://github.com/${REPO}/releases/download/v${VERSION}"
+          node scripts/gen-latest-json.mjs \
+            --version "$VERSION" \
+            --win "${BASE}/PlanWave_${VERSION}_x64-setup.exe" \
+            --win-sig "upload/PlanWave_${VERSION}_x64-setup.exe.sig" \
+            --mac "${BASE}/PlanWave_${VERSION}_aarch64.app.tar.gz" \
+            --mac-sig "upload/PlanWave_${VERSION}_aarch64.app.tar.gz.sig" \
+            --linux "${BASE}/PlanWave_${VERSION}_amd64.AppImage" \
+            --linux-sig "upload/PlanWave_${VERSION}_amd64.AppImage.sig" \
+            --apk "${BASE}/PlanWave_${VERSION}_universal.apk" \
+            --apk-sha256 "$(sha256sum "upload/PlanWave_${VERSION}_universal.apk" | cut -d' ' -f1)" \
+            --notes-file body.md \
+            --out upload/latest.json
+          cat upload/latest.json
+      - name: 未配置 updater 签名提示
+        if: |
+          needs.desktop-windows.outputs.updater != 'true' ||
+          needs.desktop-linux.outputs.updater != 'true' ||
+          needs.desktop-macos.outputs.updater != 'true'
+        run: |
+          echo "::notice::未配置 TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)（见 docs/AUTO_UPDATE.md），本次跳过 latest.json 生成，桌面自动更新不可用"
       - name: 上传到 Release
         uses: softprops/action-gh-release@v3
         with:

@@ -36,5 +36,13 @@
       "icons/icon.ico",
       "icons/icon.icns"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY1OEQ2MzM2QkNCNjM0MDUKUldRRk5MYThObU9OOWJBdWRSN0I4dkR0L0hqdFY3QWsvbnN5T2g1RnZoVUM3OE12Um5LMUNUYkUK",
+      "endpoints": [
+        "https://github.com/Yangshifu1024/PlanWave/releases/latest/download/latest.json"
+      ]
+    }
   }
 }
