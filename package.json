@@ -1,7 +1,7 @@
 {
   "name": "planwave",
   "private": true,
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "PlanWave — 离线优先、多端实时同步的 To-Do 应用（Tauri 2 + React + Rust）",
   "scripts": {
     "dev": "pnpm dev:web",
