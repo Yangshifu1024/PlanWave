@@ -449,30 +449,21 @@ jobs:
             [ -e "$f" ] || continue
             mv "$f" "upload/PlanWave_${VERSION}_universal.apk"
           done
-          for f in upload/*_x64-setup.exe; do
-            [ -e "$f" ] || continue
-            mv "$f" "upload/PlanWave_${VERSION}_x64-setup.exe"
-          done
-          for f in upload/*_x64-setup.exe.sig; do
-            [ -e "$f" ] || continue
-            mv "$f" "upload/PlanWave_${VERSION}_x64-setup.exe.sig"
-          done
-          for f in upload/*.app.tar.gz; do
-            [ -e "$f" ] || continue
-            mv "$f" "upload/PlanWave_${VERSION}_aarch64.app.tar.gz"
-          done
-          for f in upload/*.app.tar.gz.sig; do
-            [ -e "$f" ] || continue
-            mv "$f" "upload/PlanWave_${VERSION}_aarch64.app.tar.gz.sig"
-          done
-          for f in upload/*.AppImage; do
-            [ -e "$f" ] || continue
-            mv "$f" "upload/PlanWave_${VERSION}_amd64.AppImage"
-          done
-          for f in upload/*.AppImage.sig; do
-            [ -e "$f" ] || continue
-            mv "$f" "upload/PlanWave_${VERSION}_amd64.AppImage.sig"
-          done
+          # tauri 的 NSIS/AppImage/app.tar.gz 产物已自带版本名：目标同名时跳过 mv
+          # （bash -e 下 mv 同名文件会报错中断）
+          rename_all() {
+            local glob="$1" target="upload/PlanWave_${VERSION}_$2"
+            for f in $glob; do
+              [ -e "$f" ] || continue
+              [ "$f" = "$target" ] || mv -f "$f" "$target"
+            done
+          }
+          rename_all 'upload/*_x64-setup.exe' 'x64-setup.exe'
+          rename_all 'upload/*_x64-setup.exe.sig' 'x64-setup.exe.sig'
+          rename_all 'upload/*.app.tar.gz' 'aarch64.app.tar.gz'
+          rename_all 'upload/*.app.tar.gz.sig' 'aarch64.app.tar.gz.sig'
+          rename_all 'upload/*.AppImage' 'amd64.AppImage'
+          rename_all 'upload/*.AppImage.sig' 'amd64.AppImage.sig'
           ls -la upload/
       # 直推 main 没有 PR，generate_release_notes 只会给出 Full Changelog 链接；
       # 这里显式列出与上一个 tag 之间的全部 commit，GitHub 自动生成的
