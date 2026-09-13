@@ -150,10 +150,12 @@ mod tests {
     }
 
     #[test]
-    fn invalid_custom_url_fails_client_build() {
+    fn unparseable_custom_url_fails_client_build() {
+        // reqwest 对「无协议字符串」较宽容（按主机名处理）；
+        // 含空格的地址在任何解析路径下都会失败
         let custom = ProxySetting {
             mode: "custom".into(),
-            url: Some("not-a-proxy".into()),
+            url: Some("not a proxy".into()),
         };
         assert!(build_client(&custom).is_err());
     }
