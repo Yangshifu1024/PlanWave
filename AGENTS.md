@@ -68,10 +68,19 @@ PRs merge into `main` with a normal merge commit (no squash); the merge respects
 
 - **AI agents must not commit / push / merge automatically** — exception: the user explicitly asks the agent to commit
 - **main branch protection**: no force push; PRs must pass code-reviewer review
-- **Every PR links a proposal or task**: the description references `docs/features/F<number>.md` or `docs/tasks/<task-name>/plan.md`
+- **Every PR links a proposal or task**: the description references `docs/features/<yyyyMMdd>-<short-description>.md` or `docs/tasks/<task-name>/plan.md`
 - **Confirm the branch before new work / new issues**: before handling, ask whether to use a new branch
   - No: continue on the current branch
-  - Yes: suggest a branch name (`feature/<name>` or `fix/<name>`, aligned with `docs/features/F<number>.md` or `docs/tasks/<feat|fix>-<name>/`) and accept custom names; create it after confirmation
+  - Yes: suggest a branch name (`feature/<name>` or `fix/<name>`, aligned with `docs/features/<yyyyMMdd>-<short-description>.md` or `docs/tasks/<feat|fix>-<name>/`) and accept custom names; create it after confirmation
+
+### Releasing
+
+Cut releases with the `planwave-release` skill (`.agents/skills/planwave-release/SKILL.md`) instead of hand-rolling the steps. Its non-negotiable rules:
+
+- Suggest the next semver from commits since the last tag (breaking → minor while 0.x, `feat` → minor, `fix` → patch) and confirm with the user. Never reuse an already-tagged version — the Android `versionCode` derives from the tag.
+- Run the full gate before bumping: clean tree, up-to-date `main`, then `pnpm lint`, `pnpm test:rust`, `pnpm test:web`, `pnpm build:web`.
+- Bump only via `pnpm bump <version>` (expect exactly 7 changed files), commit as `chore(release): vX.Y.Z`.
+- **Always stop before pushing**: pushing the `v*` tag triggers release CI (and cancels any in-flight release) and is effectively irreversible — push `main` + tag only after the user's explicit yes.
 
 ## Specialized agents
 
@@ -81,7 +90,7 @@ PRs merge into `main` with a normal merge commit (no squash); the merge respects
 | **code-reviewer** | Code review (correctness / security / performance / maintainability / readability / test coverage / best practices) |
 | **tester** | Test case design, test strategy, defect analysis, automation advice |
 
-Detailed agent behavior conventions live in `.agents/agents/<name>.md`.
+Detailed agent behavior conventions live in `.agents/agents/<name>.md`. Project skills (automation recipes like `planwave-release`) live in `.agents/skills/<name>/SKILL.md`.
 
 Invoke the matching specialized agent per scenario.
 
