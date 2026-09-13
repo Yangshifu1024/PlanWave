@@ -483,35 +483,35 @@ jobs:
             git log --no-decorate --format='- %s (%h)' "$RANGE"
           } > body.md
           cat body.md
-      # 桌面三端都配置了 updater 签名密钥时，生成自动更新清单 latest.json
-      # 并随 Release 上传（客户端 updater 端点即该资产的直链）
+      # 至少一个桌面平台有 updater 签名时，生成自动更新清单 latest.json
+      # 并随 Release 上传（客户端 updater 端点即该资产的直链）；
+      # 清单按实际可用平台生成（如 macOS 未配 Apple 签名则不含 darwin 条目）
       - name: 生成 latest.json（自动更新清单）
         if: |
-          needs.desktop-windows.outputs.updater == 'true' &&
-          needs.desktop-linux.outputs.updater == 'true' &&
+          needs.desktop-windows.outputs.updater == 'true' ||
+          needs.desktop-linux.outputs.updater == 'true' ||
           needs.desktop-macos.outputs.updater == 'true'
         env:
           REPO: ${{ github.repository }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           BASE="https://github.com/${REPO}/releases/download/v${VERSION}"
-          node scripts/gen-latest-json.mjs \
-            --version "$VERSION" \
-            --win "${BASE}/PlanWave_${VERSION}_x64-setup.exe" \
-            --win-sig "upload/PlanWave_${VERSION}_x64-setup.exe.sig" \
-            --mac "${BASE}/PlanWave_${VERSION}_aarch64.app.tar.gz" \
-            --mac-sig "upload/PlanWave_${VERSION}_aarch64.app.tar.gz.sig" \
-            --linux "${BASE}/PlanWave_${VERSION}_amd64.AppImage" \
-            --linux-sig "upload/PlanWave_${VERSION}_amd64.AppImage.sig" \
-            --apk "${BASE}/PlanWave_${VERSION}_universal.apk" \
-            --apk-sha256 "$(sha256sum "upload/PlanWave_${VERSION}_universal.apk" | cut -d' ' -f1)" \
-            --notes-file body.md \
-            --out upload/latest.json
+          ARGS="--version $VERSION --apk ${BASE}/PlanWave_${VERSION}_universal.apk --apk-sha256 $(sha256sum "upload/PlanWave_${VERSION}_universal.apk" | cut -d' ' -f1) --notes-file body.md --out upload/latest.json"
+          if [ "${{ needs.desktop-windows.outputs.updater }}" = "true" ]; then
+            ARGS="$ARGS --win ${BASE}/PlanWave_${VERSION}_x64-setup.exe --win-sig upload/PlanWave_${VERSION}_x64-setup.exe.sig"
+          fi
+          if [ "${{ needs.desktop-macos.outputs.updater }}" = "true" ]; then
+            ARGS="$ARGS --mac ${BASE}/PlanWave_${VERSION}_aarch64.app.tar.gz --mac-sig upload/PlanWave_${VERSION}_aarch64.app.tar.gz.sig"
+          fi
+          if [ "${{ needs.desktop-linux.outputs.updater }}" = "true" ]; then
+            ARGS="$ARGS --linux ${BASE}/PlanWave_${VERSION}_amd64.AppImage --linux-sig upload/PlanWave_${VERSION}_amd64.AppImage.sig"
+          fi
+          node scripts/gen-latest-json.mjs $ARGS
           cat upload/latest.json
       - name: 未配置 updater 签名提示
         if: |
-          needs.desktop-windows.outputs.updater != 'true' ||
-          needs.desktop-linux.outputs.updater != 'true' ||
+          needs.desktop-windows.outputs.updater != 'true' &&
+          needs.desktop-linux.outputs.updater != 'true' &&
           needs.desktop-macos.outputs.updater != 'true'
         run: |
           echo "::notice::未配置 TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)（见 docs/AUTO_UPDATE.md），本次跳过 latest.json 生成，桌面自动更新不可用"

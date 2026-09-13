@@ -2,11 +2,12 @@
 //!
 //! 结构：
 //! - `version` / `notes` / `pub_date`：全平台共用；
-//! - `platforms`：windows-x86_64 / darwin-aarch64 / darwin-x86_64 / linux-x86_64，
-//!   signature 为 minisign 签名文件内容，url 为 Release 资产直链；
+//! - `platforms`：按可用签名生成条目（windows-x86_64 / darwin-aarch64 /
+//!   darwin-x86_64 / linux-x86_64），signature 为 minisign 签名文件内容，
+//!   url 为 Release 资产直链；
 //! - `android`：自定义段（Tauri 忽略未知键），供 Android 端应用内更新读取。
 //!
-//! 用法见 release.yml 的调用示例（--win/--mac/--linux/--apk 为对应 Release 资产 URL）。
+//! 用法见 release.yml 的调用示例；未提供 URL+签名的平台不会出现在清单里。
 
 import { readFileSync, writeFileSync } from "node:fs";
 
@@ -19,25 +20,17 @@ function arg(name) {
   return process.argv[i + 1];
 }
 
-const version = arg("version");
-const out = arg("out");
-
-function readSig(name) {
-  const file = arg(name);
-  const content = readFileSync(file, "utf-8").trim();
-  if (!content) {
-    console.error(`签名文件为空: ${file}`);
-    process.exit(1);
-  }
-  return content;
+/** 可选参数：未提供返回 undefined（对应平台不进清单）。 */
+function opt(name) {
+  const i = process.argv.indexOf(`--${name}`);
+  return i === -1 || i + 1 >= process.argv.length ? undefined : process.argv[i + 1];
 }
 
-const win = arg("win");
-const mac = arg("mac");
-const linux = arg("linux");
+const version = arg("version");
+const out = arg("out");
+const notesFile = arg("notes-file");
 const apk = arg("apk");
 const apkSha256 = arg("apk-sha256");
-const notesFile = arg("notes-file");
 const notes = readFileSync(notesFile, "utf-8").trim();
 
 if (!/^[0-9a-f]{64}$/.test(apkSha256.toLowerCase())) {
@@ -45,29 +38,37 @@ if (!/^[0-9a-f]{64}$/.test(apkSha256.toLowerCase())) {
   process.exit(1);
 }
 
+const platforms = {};
+function addPlatform(key, urlName, sigName) {
+  const url = opt(urlName);
+  const sigFile = opt(sigName);
+  if (!url || !sigFile) return;
+  const signature = readFileSync(sigFile, "utf-8").trim();
+  if (!signature) {
+    console.error(`签名文件为空: ${sigFile}`);
+    process.exit(1);
+  }
+  platforms[key] = { signature, url };
+}
+
+addPlatform("windows-x86_64", "win", "win-sig");
+addPlatform("linux-x86_64", "linux", "linux-sig");
+addPlatform("darwin-aarch64", "mac", "mac-sig");
+// universal 构建：aarch64 产物同时覆盖 x86_64
+if (platforms["darwin-aarch64"]) {
+  platforms["darwin-x86_64"] = platforms["darwin-aarch64"];
+}
+
+if (Object.keys(platforms).length === 0) {
+  console.error("没有任何平台的签名产物，拒绝生成空清单");
+  process.exit(1);
+}
+
 const manifest = {
   version,
   notes,
   pub_date: new Date().toISOString().replace(/\.\d+Z$/, "Z"),
-  platforms: {
-    "windows-x86_64": {
-      signature: readSig("win-sig"),
-      url: win,
-    },
-    "darwin-aarch64": {
-      signature: readSig("mac-sig"),
-      url: mac,
-    },
-    // universal 构建：aarch64 产物同时覆盖 x86_64（Rosetta 不涉及，直接跑通用二进制）
-    "darwin-x86_64": {
-      signature: readSig("mac-sig"),
-      url: mac,
-    },
-    "linux-x86_64": {
-      signature: readSig("linux-sig"),
-      url: linux,
-    },
-  },
+  platforms,
   android: {
     version,
     url: apk,
