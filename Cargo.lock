@@ -3141,7 +3141,7 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 
 [[package]]
 name = "planwave"
-version = "0.2.4"
+version = "0.3.0"
 dependencies = [
  "tauri",
  "tauri-build",
@@ -3150,7 +3150,7 @@ dependencies = [
 
 [[package]]
 name = "planwave-server"
-version = "0.2.4"
+version = "0.3.0"
 dependencies = [
  "argon2",
  "async-trait",
@@ -4506,7 +4506,7 @@ dependencies = [
 
 [[package]]
 name = "sync-core"
-version = "0.2.4"
+version = "0.3.0"
 dependencies = [
  "async-trait",
  "js-sys",
@@ -4520,7 +4520,7 @@ dependencies = [
 
 [[package]]
 name = "sync-wasm"
-version = "0.2.4"
+version = "0.3.0"
 dependencies = [
  "async-trait",
  "console_error_panic_hook",
