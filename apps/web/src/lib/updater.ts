@@ -1,43 +1,18 @@
 //! 应用自动更新：桌面（Tauri updater 插件）/ Android（应用内下载 APK）/ Web（提示刷新）。
 //!
 //! 分发源为 GitHub Releases 上由 CI 生成的 `latest.json`；「跳过此版本」存
-//! localStorage。版本比较与提示判定是纯函数，可直接单测。
+//! localStorage。版本比较与提示判定是纯函数（见 `lib/updateVersion.ts`）。
 //!
 //! 注意：本模块被 store 单向引用（updater → store），不得反向被 store 引入。
 
 import { getApiBase, isDesktopApp, isTauri } from "./platform";
+import { isWebStale, isNewerVersion, shouldPromptUpdate } from "./updateVersion";
 import { useApp } from "../state/store";
 
 const LATEST_MANIFEST_URL =
   "https://github.com/Yangshifu1024/PlanWave/releases/latest/download/latest.json";
 const SKIP_KEY = "planwave.update.skipped_version";
 const AUTO_CHECK_DELAY_MS = 5_000;
-
-/** 语义化版本比较（忽略前导 v 与 pre-release 后缀）：candidate 更新返回 true。 */
-export function isNewerVersion(candidate: string, current: string): boolean {
-  const parse = (v: string) =>
-    v
-      .replace(/^v/, "")
-      .split("-")[0]!
-      .split(".")
-      .map((n) => Number.parseInt(n, 10) || 0);
-  const [cMajor = 0, cMinor = 0, cPatch = 0] = parse(candidate);
-  const [uMajor = 0, uMinor = 0, uPatch = 0] = parse(current);
-  if (cMajor !== uMajor) return cMajor > uMajor;
-  if (cMinor !== uMinor) return cMinor > uMinor;
-  return cPatch > uPatch;
-}
-
-/** 是否向用户提示该版本：被「跳过此版本」拦下的不再提示（手动检查无视跳过）。 */
-export function shouldPromptUpdate(version: string): boolean {
-  const skipped = localStorage.getItem(SKIP_KEY);
-  return !skipped || isNewerVersion(version, skipped);
-}
-
-/** Web 端：服务器部署的版本（web 镜像与 server 同 tag 构建）新于页面构建版本。 */
-export function isWebStale(appVersion: string, serverVersion: string): boolean {
-  return isNewerVersion(serverVersion, appVersion);
-}
 
 /** 忽略此版本：直到出现更新的版本才重新提示。 */
 export function skipUpdate(): void {

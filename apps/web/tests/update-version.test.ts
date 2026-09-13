@@ -1,7 +1,7 @@
 //! 自动更新的纯函数测试：版本比较、跳过版本、Web 过期判定。
 
 import { describe, expect, it } from "vitest";
-import { isNewerVersion, isWebStale, shouldPromptUpdate } from "../src/lib/updater";
+import { isNewerVersion, isWebStale, shouldPromptUpdate } from "../src/lib/updateVersion";
 
 describe("isNewerVersion", () => {
   it("按 major/minor/patch 逐位比较", () => {
