@@ -5,6 +5,7 @@ import { subtaskProgress, visibleTree } from "../lib/filters";
 import { usePullToRefresh } from "../lib/usePullToRefresh";
 import { isDesktopApp } from "../lib/platform";
 import { TaskRow } from "./TaskRow";
+import { QuickAddModal } from "./QuickAddModal";
 import { SyncStatusSheet } from "./SyncStatusSheet";
 
 function viewTitle(view: ViewKind): string {
@@ -12,22 +13,21 @@ function viewTitle(view: ViewKind): string {
     case "smart":
       return { today: "今天", upcoming: "最近 7 天", all: "全部", trash: "回收站" }[view.smart]!;
     case "project": {
-      const name = useApp
-        .getState()
-        .projects.find((p) => p.id === view.id)?.name;
+      const name = useApp.getState().projects.find((p) => p.id === view.id)?.name;
       return name ?? "项目";
     }
   }
 }
 
-/** 中栏：视图标题 + 搜索 + 快速添加（标题 + 优先级） + 任务列表（子任务缩进树）。 */
+/** 中栏：视图标题 + 搜索 + 快速添加（回车弹出详情表单） + 任务列表（子任务缩进树）。 */
 export function TaskList() {
   const tasks = useApp((s) => s.tasks);
   const view = useApp((s) => s.view);
   const search = useApp((s) => s.search);
   const projects = useApp((s) => s.projects);
   const [draft, setDraft] = useState("");
-  const [priority, setPriority] = useState(0);
+  // 非空 = 打开「新建任务」详情弹框，值为输入框预填的标题
+  const [pendingTitle, setPendingTitle] = useState<string | null>(null);
   // 折叠的父任务 id 集合（列表本地状态）
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
 
@@ -37,9 +37,10 @@ export function TaskList() {
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    void actions.addTask(draft, undefined, priority);
+    const title = draft.trim();
+    if (!title) return;
     setDraft("");
-    setPriority(0);
+    setPendingTitle(title);
   };
 
   const toggleCollapse = (id: string) => {
@@ -68,7 +69,12 @@ export function TaskList() {
           data-testid="menu-button"
         >
           <svg viewBox="0 0 20 20" className="size-5" fill="none" aria-hidden>
-            <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+            <path
+              d="M3 5h14M3 10h14M3 15h14"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+            />
           </svg>
         </button>
         <Input
@@ -111,22 +117,12 @@ export function TaskList() {
           <Input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder={view.kind === "smart" ? "添加到「收集箱」（无项目）" : "添加任务，回车确认"}
+            placeholder={
+              view.kind === "smart" ? "添加到「收集箱」（无项目）" : "添加任务，回车填写详情"
+            }
             data-testid="new-task-input"
             fullWidth
           />
-          <select
-            value={priority}
-            onChange={(e) => setPriority(Number(e.target.value))}
-            data-testid="new-task-priority"
-            aria-label="新任务优先级"
-            className="shrink-0 rounded-xl border border-zinc-200 bg-white px-2 text-sm text-zinc-600 [color-scheme:light] dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:[color-scheme:dark]"
-          >
-            <option value={0}>无</option>
-            <option value={1}>低</option>
-            <option value={2}>中</option>
-            <option value={3}>高</option>
-          </select>
         </form>
       )}
 
@@ -145,8 +141,20 @@ export function TaskList() {
           {phase === "refreshing" ? (
             <span className="flex items-center gap-1.5">
               <svg viewBox="0 0 20 20" className="size-3.5 animate-spin" fill="none" aria-hidden>
-                <circle cx="10" cy="10" r="7.5" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2" />
-                <path d="M17.5 10a7.5 7.5 0 0 0-7.5-7.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <circle
+                  cx="10"
+                  cy="10"
+                  r="7.5"
+                  stroke="currentColor"
+                  strokeOpacity="0.25"
+                  strokeWidth="2"
+                />
+                <path
+                  d="M17.5 10a7.5 7.5 0 0 0-7.5-7.5"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
               </svg>
               刷新中…
             </span>
@@ -158,7 +166,13 @@ export function TaskList() {
                 fill="none"
                 aria-hidden
               >
-                <path d="M10 3.5v11M5.5 10L10 14.5 14.5 10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                <path
+                  d="M10 3.5v11M5.5 10L10 14.5 14.5 10"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
               </svg>
               {phase === "ready" ? "松手刷新" : "下拉刷新"}
             </span>
@@ -170,7 +184,8 @@ export function TaskList() {
           data-testid="task-list"
           style={{
             transform: `translateY(${pullPx}px)`,
-            transition: phase === "pulling" || phase === "ready" ? "none" : "transform 0.2s ease-out",
+            transition:
+              phase === "pulling" || phase === "ready" ? "none" : "transform 0.2s ease-out",
           }}
         >
           {tree.map(({ task, children }) => {
@@ -199,11 +214,18 @@ export function TaskList() {
           })}
           {rowCount === 0 && (
             <li className="pt-16 text-center text-sm text-zinc-400" data-testid="empty-state">
-              {search ? "没有匹配的任务" : isTrash ? "回收站是空的" : "这里空空如也，添加一个任务吧"}
+              {search
+                ? "没有匹配的任务"
+                : isTrash
+                  ? "回收站是空的"
+                  : "这里空空如也，添加一个任务吧"}
             </li>
           )}
         </ul>
       </div>
+      {pendingTitle !== null && (
+        <QuickAddModal title={pendingTitle} onClose={() => setPendingTitle(null)} />
+      )}
       <SyncStatusSheet />
     </>
   );

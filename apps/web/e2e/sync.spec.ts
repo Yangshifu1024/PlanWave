@@ -46,11 +46,17 @@ test.describe.serial("PlanWave Web E2E", () => {
     await page.getByTestId("new-project-name").press("Enter");
     await expect(page.getByTestId("nav-project-工作")).toBeVisible({ timeout: 10_000 });
 
-    // 进入项目视图，添加任务
+    // 进入项目视图，添加任务：回车弹出详情表单（先验证空标题校验，再保存创建）
     await page.getByTestId("nav-project-工作").click();
     await expect(page.getByTestId("view-title")).toHaveText("工作");
     await page.getByTestId("new-task-input").fill("写周报");
     await page.getByTestId("new-task-input").press("Enter");
+    await expect(page.getByTestId("new-task-modal")).toBeVisible({ timeout: 10_000 });
+    await page.getByTestId("new-task-title").fill("");
+    await page.getByTestId("new-task-save").click();
+    await expect(page.getByTestId("new-task-error")).toBeVisible();
+    await page.getByTestId("new-task-title").fill("写周报");
+    await page.getByTestId("new-task-save").click();
     await expect(row(page, "写周报")).toBeVisible({ timeout: 10_000 });
 
     // 详情面板（草稿 + 手动保存）：备注 + 优先级 + 标签 + 截止日期
@@ -79,6 +85,20 @@ test.describe.serial("PlanWave Web E2E", () => {
     await expect(page.getByTestId("empty-state")).toBeVisible();
     await page.getByTestId("search-input").fill("");
 
+    // 关闭 = 放弃创建：不产生任务
+    await page.getByTestId("new-task-input").fill("被放弃的任务");
+    await page.getByTestId("new-task-input").press("Enter");
+    await expect(page.getByTestId("new-task-modal")).toBeVisible({ timeout: 10_000 });
+    await page.getByTestId("new-task-close").click();
+    await expect(row(page, "被放弃的任务")).not.toBeVisible();
+
+    // Esc = 放弃创建（与点遮罩同一条关闭路径）：不产生任务
+    await page.getByTestId("new-task-input").fill("Esc放弃的任务");
+    await page.getByTestId("new-task-input").press("Enter");
+    await expect(page.getByTestId("new-task-modal")).toBeVisible({ timeout: 10_000 });
+    await page.keyboard.press("Escape");
+    await expect(row(page, "Esc放弃的任务")).not.toBeVisible();
+
     // 删除 → 回收站 → 恢复
     await row(page, "写周报").click();
     await page.getByTestId("detail-delete").click();
@@ -100,28 +120,36 @@ test.describe.serial("PlanWave Web E2E", () => {
     await a.getByTestId("nav-all").click();
     await b.getByTestId("nav-all").click();
 
-    // A 添加任务
+    // A 添加任务（回车 → 详情弹框 → 保存）
     await a.getByTestId("new-task-input").fill("刷新同步任务");
     await a.getByTestId("new-task-input").press("Enter");
+    await expect(a.getByTestId("new-task-modal")).toBeVisible({ timeout: 15_000 });
+    await a.getByTestId("new-task-save").click();
     await expect(row(a, "刷新同步任务")).toBeVisible({ timeout: 15_000 });
 
     // B 手动刷新后看到（拉取式同步：轮询式点刷新直到任务出现）
     await expect
-      .poll(async () => {
-        await b.getByTestId("refresh-button").click();
-        await b.waitForTimeout(250);
-        return row(b, "刷新同步任务").count();
-      }, { timeout: 15_000, intervals: [500, 1_000] })
+      .poll(
+        async () => {
+          await b.getByTestId("refresh-button").click();
+          await b.waitForTimeout(250);
+          return row(b, "刷新同步任务").count();
+        },
+        { timeout: 15_000, intervals: [500, 1_000] },
+      )
       .toBeGreaterThan(0);
 
     // B 勾选完成 → A 手动刷新后看到删除线
     await b.getByTestId("check-刷新同步任务").click();
     await expect
-      .poll(async () => {
-        await a.getByTestId("refresh-button").click();
-        await a.waitForTimeout(250);
-        return row(a, "刷新同步任务").locator("span.line-through").count();
-      }, { timeout: 15_000, intervals: [500, 1_000] })
+      .poll(
+        async () => {
+          await a.getByTestId("refresh-button").click();
+          await a.waitForTimeout(250);
+          return row(a, "刷新同步任务").locator("span.line-through").count();
+        },
+        { timeout: 15_000, intervals: [500, 1_000] },
+      )
       .toBeGreaterThan(0);
 
     await ctxA.close();
@@ -138,6 +166,8 @@ test.describe.serial("PlanWave Web E2E", () => {
     await page.getByTestId("nav-all").click();
     await page.getByTestId("new-task-input").fill("离线任务");
     await page.getByTestId("new-task-input").press("Enter");
+    await expect(page.getByTestId("new-task-modal")).toBeVisible({ timeout: 10_000 });
+    await page.getByTestId("new-task-save").click();
     await expect(row(page, "离线任务")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId("sync-badge")).toContainText("离线", { timeout: 15_000 });
 
