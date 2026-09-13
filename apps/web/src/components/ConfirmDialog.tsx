@@ -30,17 +30,32 @@ export function AppConfirmDialog() {
               >
                 取消
               </Button>
-              <Button
-                variant="primary"
-                type="button"
-                onPress={() => {
-                  void confirm.action();
-                  actions.clearConfirm();
-                }}
-                data-testid="confirm-accept"
-              >
-                {confirm.confirmLabel}
-              </Button>
+              {/* danger = 破坏性操作：确认按钮转红色警示 */}
+              {confirm.danger ? (
+                <Button
+                  type="button"
+                  className="bg-red-500 text-white hover:bg-red-600"
+                  onPress={() => {
+                    void confirm.action();
+                    actions.clearConfirm();
+                  }}
+                  data-testid="confirm-accept"
+                >
+                  {confirm.confirmLabel}
+                </Button>
+              ) : (
+                <Button
+                  variant="primary"
+                  type="button"
+                  onPress={() => {
+                    void confirm.action();
+                    actions.clearConfirm();
+                  }}
+                  data-testid="confirm-accept"
+                >
+                  {confirm.confirmLabel}
+                </Button>
+              )}
             </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>

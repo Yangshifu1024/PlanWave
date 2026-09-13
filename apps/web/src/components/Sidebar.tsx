@@ -1,9 +1,10 @@
-import { useMemo, useState, type ReactNode } from "react";
-import { Button, Input } from "@heroui/react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Button, Dropdown, DropdownItem, DropdownMenu, DropdownPopover, DropdownTrigger, Input } from "@heroui/react";
 import type { ProjectRecord } from "../types";
 import { actions, useApp, type ViewKind } from "../state/store";
 import { countTasks } from "../lib/filters";
 import { isDesktopApp } from "../lib/platform";
+import { ProjectRenameDialog } from "./ProjectRenameDialog";
 import { Logo } from "../App";
 
 const SMART_LISTS: { key: "today" | "upcoming" | "all" | "trash"; label: string }[] = [
@@ -24,13 +25,16 @@ const DOT_COLORS: Record<string, string> = {
 };
 
 /** 左侧栏：智能清单 + 项目列表 + 设置/登出。桌面常驻，移动端抽屉。
- * 导航区滚动、底行固定：项目再多也不会把设置/登出推出视野。 */
+ * 导航区滚动、底行固定：项目再多也不会把设置/登出推出视野。
+ */
 export function Sidebar() {
   const projects = useApp((s) => s.projects);
   const tasks = useApp((s) => s.tasks);
   const view = useApp((s) => s.view);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
+  // 重命名接缝：菜单「重命名」记录目标项目，ProjectRenameDialog 在 aside 底部条件渲染。
+  const [renaming, setRenaming] = useState<ProjectRecord | null>(null);
 
   const counts = useMemo(() => {
     const map = new Map<string, number>();
@@ -87,14 +91,13 @@ export function Sidebar() {
         {projects
           .filter((p) => !p.deleted)
           .map((p) => (
-            <SideItem
+            <ProjectRow
               key={p.id}
+              project={p}
               active={view.kind === "project" && view.id === p.id}
-              label={<ProjectLabel project={p} />}
               count={counts.get(`project:${p.id}`) ?? 0}
-              testId={`nav-project-${p.name}`}
-              onClick={() => actions.setView({ kind: "project", id: p.id })}
-              onDelete={() => void actions.deleteProject(p.id)}
+              projects={projects}
+              onRename={(target) => setRenaming(target)}
             />
           ))}
 
@@ -153,16 +156,171 @@ export function Sidebar() {
           退出登录
         </Button>
       </div>
+
+      {/* 重命名对话框：菜单「重命名」→ 记录目标项目 → 此处条件渲染 */}
+      {renaming && <ProjectRenameDialog project={renaming} onClose={() => setRenaming(null)} />}
     </aside>
   );
 }
 
-function ProjectLabel({ project }: { project: ProjectRecord }) {
+/** 项目行：左键导航 / 右键与长按唤出上下文菜单（⋯ 按钮也可打开），菜单内改色、重命名、删除。
+ * 取代原 SideItem 在项目行的用法；智能清单仍由 SideItem 渲染。 */
+function ProjectRow(props: {
+  project: ProjectRecord;
+  active: boolean;
+  count: number;
+  /** 全量项目列表（含已删除）：菜单 action 前校验项目是否仍然存在。 */
+  projects: ProjectRecord[];
+  /** 重命名接缝：菜单 action 转交父层打开 ProjectRenameDialog。 */
+  onRename?: (p: ProjectRecord) => void;
+}) {
+  const p = props.project;
+  const [menuOpen, setMenuOpen] = useState(false);
+  // 长按哨兵：长按弹菜单后要吞掉抬手时触发的导航点击（React onClick 无法被 preventDefault 阻止）。
+  const longPressedRef = useRef(false);
+  // 长按自实现：触屏长按 500ms 弹菜单，移动超 10px 视为滚动意图取消；
+  // 仅监听 touch 指针，桌面用右键/⋯；组件卸载时清理 window 监听与定时器。
+  const pressStartRef = useRef<{ timer: number; cleanup: () => void } | null>(null);
+  const LONG_PRESS_MS = 500;
+  const LONG_PRESS_MOVE_TOLERANCE = 10;
+  const longPressProps = {
+    onPointerDown: (e: React.PointerEvent) => {
+      if (e.pointerType !== "touch") return;
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const onMove = (ev: PointerEvent) => {
+        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > LONG_PRESS_MOVE_TOLERANCE) cleanup();
+      };
+      const cleanup = () => {
+        window.clearTimeout(pressStartRef.current?.timer);
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", cleanup);
+        window.removeEventListener("pointercancel", cleanup);
+        pressStartRef.current = null;
+      };
+      const timer = window.setTimeout(() => {
+        cleanup(); // 触发后无需再监听移动/抬手
+        longPressedRef.current = true;
+        setMenuOpen(true);
+      }, LONG_PRESS_MS);
+      pressStartRef.current = { timer, cleanup };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", cleanup);
+      window.addEventListener("pointercancel", cleanup);
+    },
+  };
+  useEffect(() => () => pressStartRef.current?.cleanup(), []);
+  // 菜单过期防护：打开期间项目被他端删除/软删时，action 静默关闭菜单，不执行任何变更。
+  const isStale = !props.projects.some((x) => x.id === p.id && !x.deleted);
+
+  // DropdownTrigger 是 <button>，不能嵌套按钮，⋯ 菜单按钮放在它外层作兄弟元素。
   return (
-    <span className="flex min-w-0 items-center gap-2">
-      <span className={`size-2 shrink-0 rounded-full ${DOT_COLORS[project.color] ?? DOT_COLORS.gray}`} />
-      <span className="truncate">{project.name}</span>
-    </span>
+    <div className="group flex items-center">
+      <Dropdown trigger="contextMenu" isOpen={menuOpen} onOpenChange={setMenuOpen}>
+        <DropdownTrigger
+          {...longPressProps}
+          onPress={() => {
+            // 长按松手会触发一次 React onClick（见 longPressedRef 注释），跳过防止误导航。
+            if (longPressedRef.current) {
+              longPressedRef.current = false;
+              return;
+            }
+            actions.setView({ kind: "project", id: p.id });
+          }}
+          data-testid={`nav-project-${p.name}`}
+          className={`flex min-w-0 flex-1 select-none items-center justify-between rounded-lg px-3 py-1.5 text-sm outline-none transition ${
+            props.active
+              ? "bg-blue-500 text-white"
+              : "text-zinc-600 hover:bg-zinc-200/60 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          }`}
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <span className={`size-2 shrink-0 rounded-full ${DOT_COLORS[p.color] ?? DOT_COLORS.gray}`} />
+            <span className="truncate">{p.name}</span>
+          </span>
+          {props.count > 0 && (
+            <span
+              className={`ml-1 text-xs ${props.active ? "text-blue-100" : "text-zinc-400"} group-hover:invisible`}
+            >
+              {props.count}
+            </span>
+          )}
+        </DropdownTrigger>
+        <DropdownPopover placement="bottom start">
+          {/* 色板不作为菜单项：放在 Menu 之上的自绘区块，点击直接改色并收起菜单。 */}
+          <div className="flex gap-1 px-2 py-1.5">
+            {Object.entries(DOT_COLORS).map(([color, cls]) => (
+              <button
+                key={color}
+                aria-label={`颜色：${color}`}
+                data-testid={`project-color-${color}`}
+                className={`size-5 rounded-full text-[10px] leading-none text-white ${cls} ${
+                  p.color === color ? "ring-2 ring-offset-1" : ""
+                }`}
+                onClick={() => {
+                  if (isStale) {
+                    setMenuOpen(false);
+                    return;
+                  }
+                  void actions.setProjectColor(p.id, color);
+                  setMenuOpen(false);
+                }}
+              >
+                {p.color === color ? "✓" : ""}
+              </button>
+            ))}
+          </div>
+          <DropdownMenu>
+            {/* 动作挂在 Item 自身的 onAction 上：RAC Menu 本身无 onAction prop（传了会被静默忽略），
+                这是首版「点重命名无反应」的根因 */}
+            <DropdownItem
+              key="rename"
+              onAction={() => {
+                if (isStale) {
+                  setMenuOpen(false);
+                  return;
+                }
+                setMenuOpen(false);
+                props.onRename?.(p);
+              }}
+            >
+              重命名
+            </DropdownItem>
+            <DropdownItem
+              key="delete"
+              className="text-red-500 data-[focused]:text-red-500"
+              onAction={() => {
+                if (isStale) {
+                  setMenuOpen(false);
+                  return;
+                }
+                setMenuOpen(false);
+                actions.requestConfirm({
+                  title: "删除项目",
+                  message: `项目「${p.name}」及其任务将移入回收站，可在回收站恢复。`,
+                  confirmLabel: "删除",
+                  danger: true,
+                  action: () => void actions.deleteProject(p.id),
+                });
+              }}
+            >
+              删除
+            </DropdownItem>
+          </DropdownMenu>
+        </DropdownPopover>
+      </Dropdown>
+      <Button
+        isIconOnly
+        variant="ghost"
+        size="sm"
+        className="ml-1 shrink-0 p-2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+        onPress={() => setMenuOpen(true)}
+        aria-label="项目菜单"
+        data-testid={`project-menu-${p.name}`}
+      >
+        ⋯
+      </Button>
+    </div>
   );
 }
 
@@ -172,7 +330,6 @@ function SideItem(props: {
   count: number;
   testId: string;
   onClick: () => void;
-  onDelete?: () => void;
 }) {
   return (
     <div
@@ -195,15 +352,6 @@ function SideItem(props: {
         >
           {props.count}
         </span>
-      )}
-      {props.onDelete && (
-        <button
-          onClick={props.onDelete}
-          aria-label="删除项目"
-          className={`ml-1 text-xs invisible group-hover:visible ${props.active ? "text-blue-100" : "text-zinc-400"} hover:text-red-500`}
-        >
-          ×
-        </button>
       )}
     </div>
   );

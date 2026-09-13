@@ -79,6 +79,8 @@ export interface ConfirmRequest {
   message: string;
   confirmLabel: string;
   action: () => void | Promise<void>;
+  /** 仅破坏性操作使用：确认按钮转红色（区别于普通主色按钮）。 */
+  danger?: boolean;
 }
 
 interface AppStore extends AppState {
@@ -346,9 +348,17 @@ export const actions = {
     await afterMutate();
   },
 
+  /** 重命名项目：仅覆盖名称字段，其余字段保持不变。 */
   async renameProject(id: string, name: string): Promise<void> {
     const client = await ensureTypedClient();
     await client.mutate("project", id, JSON.stringify({ name }));
+    await afterMutate();
+  },
+
+  /** 设置项目颜色：仅覆盖 color 字段，其余字段保持不变。 */
+  async setProjectColor(id: string, color: string): Promise<void> {
+    const client = await ensureTypedClient();
+    await client.mutate("project", id, JSON.stringify({ color }));
     await afterMutate();
   },
 
