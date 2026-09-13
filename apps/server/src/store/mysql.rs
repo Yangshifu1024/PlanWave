@@ -35,7 +35,7 @@ struct TaskRow {
     due_date: Option<i64>,
     priority: i32,
     completed: bool,
-    labels: String,     // JSON 字符串
+    labels: String,             // JSON 字符串
     recurrence: Option<String>, // JSON 字符串，NULL = 不重复
     sort_order: f64,
     deleted: bool,
@@ -351,12 +351,11 @@ impl Store for MySqlStore {
             .fetch_one(&mut *tx)
             .await
             .map_err(db)?;
-        let project_rows: Vec<ProjectRow> = sqlx::query_as(
-            "SELECT id, name, color, sort_order, deleted FROM projects",
-        )
-        .fetch_all(&mut *tx)
-        .await
-        .map_err(db)?;
+        let project_rows: Vec<ProjectRow> =
+            sqlx::query_as("SELECT id, name, color, sort_order, deleted FROM projects")
+                .fetch_all(&mut *tx)
+                .await
+                .map_err(db)?;
         let task_rows: Vec<TaskRow> = sqlx::query_as(
             "SELECT id, project_id, parent_id, title, notes, due_date, priority, completed, CAST(labels AS CHAR) AS labels, CAST(recurrence AS CHAR) AS recurrence, sort_order, deleted
              FROM tasks",

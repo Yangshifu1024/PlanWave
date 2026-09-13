@@ -248,8 +248,8 @@ impl IdbStorage {
             .map_err(db_err)?;
         let store = tx.object_store("recent_ops").map_err(db_err)?;
         for entry in tail {
-            let json = serde_json::to_string(entry)
-                .map_err(|e| ClientError::Storage(e.to_string()))?;
+            let json =
+                serde_json::to_string(entry).map_err(|e| ClientError::Storage(e.to_string()))?;
             store.put(&json.into(), None).map_err(db_err)?;
         }
         // 自增主键升序 = 时间升序：裁掉最老的
@@ -339,12 +339,12 @@ impl ClientStorage for IdbStorage {
         for s in ops {
             max_seq = Some(max_seq.unwrap_or(0).max(s.seq));
             max_lamport = max_lamport.max(s.op.lamport);
-            let already =
-                seen.get(wasm_bindgen::JsValue::from(&s.op.op_id))
-                    .map_err(db_err)?
-                    .await
-                    .map_err(db_err)?
-                    .is_some();
+            let already = seen
+                .get(wasm_bindgen::JsValue::from(&s.op.op_id))
+                .map_err(db_err)?
+                .await
+                .map_err(db_err)?
+                .is_some();
             if already {
                 continue;
             }
@@ -408,8 +408,9 @@ impl ClientStorage for IdbStorage {
                 .await
                 .map_err(db_err)?
                 .and_then(|v| v.as_string());
-            let mut meta: SyncMeta =
-                raw.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+            let mut meta: SyncMeta = raw
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_default();
             if let Some(seq) = max_seq {
                 if seq > meta.last_pulled_seq {
                     meta.last_pulled_seq = seq;
@@ -418,8 +419,8 @@ impl ClientStorage for IdbStorage {
             if max_lamport > meta.lamport {
                 meta.lamport = max_lamport;
             }
-            let meta_json = serde_json::to_string(&meta)
-                .map_err(|e| ClientError::Storage(e.to_string()))?;
+            let meta_json =
+                serde_json::to_string(&meta).map_err(|e| ClientError::Storage(e.to_string()))?;
             meta_store
                 .put(&meta_json.into(), Some(&META_KEY.into()))
                 .map_err(db_err)?;
@@ -507,8 +508,8 @@ impl ClientStorage for IdbStorage {
                 .map_err(db_err)?;
             let store = tx.object_store("projects").map_err(db_err)?;
             for rec in chunk {
-                let json = serde_json::to_string(rec)
-                    .map_err(|e| ClientError::Storage(e.to_string()))?;
+                let json =
+                    serde_json::to_string(rec).map_err(|e| ClientError::Storage(e.to_string()))?;
                 store
                     .put(&json.into(), Some(&rec.id.clone().into()))
                     .map_err(db_err)?;
@@ -522,8 +523,8 @@ impl ClientStorage for IdbStorage {
                 .map_err(db_err)?;
             let store = tx.object_store("tasks").map_err(db_err)?;
             for rec in chunk {
-                let json = serde_json::to_string(rec)
-                    .map_err(|e| ClientError::Storage(e.to_string()))?;
+                let json =
+                    serde_json::to_string(rec).map_err(|e| ClientError::Storage(e.to_string()))?;
                 store
                     .put(&json.into(), Some(&rec.id.clone().into()))
                     .map_err(db_err)?;

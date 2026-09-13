@@ -242,7 +242,11 @@ impl ClientStorage for MemStorage {
             .iter()
             .map(|p| (p.id.clone(), p.clone()))
             .collect();
-        inner.tasks = snap.tasks.iter().map(|t| (t.id.clone(), t.clone())).collect();
+        inner.tasks = snap
+            .tasks
+            .iter()
+            .map(|t| (t.id.clone(), t.clone()))
+            .collect();
         inner.meta.last_pulled_seq = snap.seq;
         // 未同步的本地编辑重新应用到投影，快照引导后 UI 仍可见
         let pending = inner.queue.clone();
@@ -497,7 +501,9 @@ async fn fresh_device_falls_back_to_replay_when_snapshot_unavailable() {
 #[tokio::test]
 async fn snapshot_bootstrap_preserves_offline_local_writes() {
     let (server, offline, a, _b) = rig();
-    a.mutate(Uuid::new_v4().to_string(), title("远端已有")).await.unwrap();
+    a.mutate(Uuid::new_v4().to_string(), title("远端已有"))
+        .await
+        .unwrap();
     a.flush().await.unwrap();
 
     // 新设备离线先写了两条（进入 pending 队列），恢复网络后 start()

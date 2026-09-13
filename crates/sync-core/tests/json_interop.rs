@@ -135,7 +135,10 @@ fn recurrence_and_parent_id_serialize_with_expected_shape() {
         ..Default::default()
     });
     let v = serde_json::to_value(&clear).unwrap();
-    assert_eq!(v, json!({ "type": "task", "recurrence": null, "parent_id": null }));
+    assert_eq!(
+        v,
+        json!({ "type": "task", "recurrence": null, "parent_id": null })
+    );
 
     // 反序列化方向同样成立：显式 null = 清空（不是「不动」）
     let de: Patch = serde_json::from_value(json!({ "type": "task", "recurrence": null })).unwrap();

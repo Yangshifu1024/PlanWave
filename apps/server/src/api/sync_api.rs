@@ -66,10 +66,7 @@ pub async fn pull(
 
 /// 权威投影快照：新设备引导用，一次请求拿到全部数据，替代全量 oplog 回放。
 /// seq 语义与 pull 一致——客户端以此推进 last_pulled_seq，之后照常增量拉取。
-pub async fn snapshot(
-    State(state): State<AppState>,
-    _user: AuthUser,
-) -> ApiResult<Json<Snapshot>> {
+pub async fn snapshot(State(state): State<AppState>, _user: AuthUser) -> ApiResult<Json<Snapshot>> {
     let snap = state.store.snapshot().await?;
     Ok(Json(snap))
 }

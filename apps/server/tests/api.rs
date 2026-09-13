@@ -421,7 +421,12 @@ async fn snapshot_reflects_projection_with_tombstones_and_auth() {
     let app = App::new().await;
 
     // 未鉴权拒绝
-    let res = app.http.get(app.url("/sync/snapshot")).send().await.unwrap();
+    let res = app
+        .http
+        .get(app.url("/sync/snapshot"))
+        .send()
+        .await
+        .unwrap();
     assert_eq!(res.status(), 401);
 
     let token = app.register_and_login("device-1").await;

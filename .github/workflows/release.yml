@@ -9,6 +9,12 @@ on:
   push:
     tags: ["v*"]
 
+# 新标签推送时取消仍在跑的旧标签发布：镜像与产物以最新 tag 为准，
+# 旧发布继续跑只会浪费构建时长并产出过时产物
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
   packages: write
