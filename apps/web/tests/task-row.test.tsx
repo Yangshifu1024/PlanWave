@@ -1,7 +1,7 @@
 //! TaskRow 组件交互测试。
 
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TaskRow } from "../src/components/TaskRow";
 import type { TaskRecord } from "../src/types";
 
@@ -12,6 +12,7 @@ vi.mock("../src/state/store", () => ({
     deleteTask: vi.fn(),
     restoreTask: vi.fn(),
     openPurgeConfirm: vi.fn(),
+    requestConfirm: vi.fn(),
   },
   useApp: (sel: (s: { selectedTaskId: string | null }) => string | null) =>
     sel({ selectedTaskId: null }),
@@ -37,12 +38,20 @@ function task(partial: Partial<TaskRecord>): TaskRecord {
 
 import { actions } from "../src/state/store";
 
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
 describe("TaskRow", () => {
-  it("渲染标题，勾选框触发 toggleTask", () => {
+  it("勾选框触发完成确认（确认后执行 toggleTask）", () => {
     const { container } = render(<TaskRow task={task({})} showProject={false} projects={[]} />);
     expect(screen.getByText("写周报")).toBeInTheDocument();
     // jsdom 不实现 label 点击转发，直接点底层 input（label 点击路径由 E2E 覆盖）
     fireEvent.click(container.querySelector('input[type="checkbox"]')!);
+    expect(vi.mocked(actions.requestConfirm)).toHaveBeenCalledTimes(1);
+    const request = vi.mocked(actions.requestConfirm).mock.calls[0]![0]!;
+    expect(request.title).toBe("完成任务");
+    request.action();
     expect(vi.mocked(actions.toggleTask)).toHaveBeenCalledWith("t1");
   });
 
@@ -84,6 +93,15 @@ describe("TaskRow", () => {
     render(<TaskRow task={task({ deleted: true })} showProject={false} projects={[]} />);
     fireEvent.click(screen.getByTestId("purge-写周报"));
     expect(vi.mocked(actions.openPurgeConfirm)).toHaveBeenCalledWith(["t1"]);
+  });
+
+  it("行内删除按钮触发删除确认", () => {
+    render(<TaskRow task={task({})} showProject={false} projects={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "移到回收站" }));
+    const request = vi.mocked(actions.requestConfirm).mock.calls[0]![0]!;
+    expect(request.title).toBe("删除任务");
+    request.action();
+    expect(vi.mocked(actions.deleteTask)).toHaveBeenCalledWith("t1");
   });
 
   it("优先级高时显示红色标记", () => {

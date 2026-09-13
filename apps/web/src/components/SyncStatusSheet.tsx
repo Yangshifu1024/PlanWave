@@ -1,11 +1,9 @@
 //! 同步状态详情页：pending 队列、最近 op、游标与错误信息（移动端底部抽屉，桌面居中弹层）。
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Button } from "@heroui/react";
 import { actions, useApp } from "../state/store";
 import { describePatch } from "../lib/opSummary";
-import { checkForUpdates, currentAppVersion } from "../lib/updater";
-import { isTauri } from "../lib/platform";
 import type { SyncOpInfo } from "../types";
 
 function timeLabel(ms: number | null | undefined): string {
@@ -58,11 +56,6 @@ export function SyncStatusSheet() {
   const details = useApp((s) => s.syncDetails);
   const refreshing = useApp((s) => s.refreshing);
   const syncStatus = useApp((s) => s.syncStatus);
-  const updateInfo = useApp((s) => s.updateInfo);
-  const updatePhase = useApp((s) => s.updatePhase);
-  const updateError = useApp((s) => s.updateError);
-  const updateMessage = useApp((s) => s.updateMessage);
-  const [appVersion, setAppVersion] = useState<string | null>(null);
 
   // 打开期间跟随刷新，保证数据新鲜
   useEffect(() => {
@@ -70,14 +63,6 @@ export function SyncStatusSheet() {
     void actions.loadSyncDetails();
     const timer = setInterval(() => void actions.loadSyncDetails(), 5000);
     return () => clearInterval(timer);
-  }, [open]);
-
-  // 应用版本（Tauri 端显示真实版本；Web 无自动更新渠道，不展示此区）
-  useEffect(() => {
-    if (!open || !isTauri) return;
-    void currentAppVersion()
-      .then(setAppVersion)
-      .catch(() => setAppVersion(null));
   }, [open]);
 
   if (!open) return null;
@@ -165,41 +150,6 @@ export function SyncStatusSheet() {
             {refreshing ? "同步中…" : "立即同步"}
           </Button>
         </div>
-
-        {/* 应用更新（桌面/Android；Web 端以顶部横幅提示刷新） */}
-        {isTauri && (
-          <div className="mb-4 space-y-1.5 rounded-xl bg-zinc-50 p-3 text-xs text-zinc-500 dark:bg-zinc-800/60">
-            <div className="flex justify-between">
-              <span>应用版本</span>
-              <span data-testid="app-version">{appVersion ?? "—"}</span>
-            </div>
-            <Button
-              size="sm"
-              variant="ghost"
-              isDisabled={updatePhase === "checking" || updatePhase === "downloading"}
-              onPress={() => void checkForUpdates(true)}
-              data-testid="check-update"
-              fullWidth
-            >
-              {updatePhase === "checking" ? "检查中…" : "检查更新"}
-            </Button>
-            {updateMessage && (
-              <div className="text-green-600 dark:text-green-400" data-testid="update-message">
-                {updateMessage}
-              </div>
-            )}
-            {updateError && (
-              <div className="text-red-500" data-testid="update-sheet-error">
-                {updateError}
-              </div>
-            )}
-            {updateInfo && (
-              <div className="text-blue-600 dark:text-blue-400">
-                新版本 v{updateInfo.version} 可用，请在弹窗中操作
-              </div>
-            )}
-          </div>
-        )}
 
         {/* 待推送队列 */}
         <section className="mb-4">

@@ -211,7 +211,14 @@ function DetailBody({
               <Button
                 size="sm"
                 variant="ghost"
-                onPress={() => void actions.deleteTask(task.id)}
+                onPress={() =>
+                  actions.requestConfirm({
+                    title: "删除任务",
+                    message: `将「${task.title}」移到回收站？可在回收站中恢复。`,
+                    confirmLabel: "移到回收站",
+                    action: () => actions.deleteTask(task.id),
+                  })
+                }
                 data-testid="detail-delete"
                 className="text-zinc-400 hover:text-red-500"
               >
@@ -239,10 +246,18 @@ function DetailBody({
       />
 
       {/* 墓碑（回收站中的已删任务）不可再修改完成状态 */}
+      {/* 墓碑（回收站中的已删任务）不可再修改完成状态 */}
       <Switch
         isSelected={task.completed}
         isDisabled={task.deleted}
-        onChange={() => void actions.toggleTask(task.id)}
+        onChange={() =>
+          actions.requestConfirm({
+            title: task.completed ? "取消完成" : "完成任务",
+            message: `将「${task.title}」标记为${task.completed ? "未完成" : "已完成"}？`,
+            confirmLabel: task.completed ? "取消完成" : "完成",
+            action: () => actions.toggleTask(task.id),
+          })
+        }
         data-testid="detail-completed"
       >
         <Switch.Content>
@@ -426,7 +441,14 @@ function DetailBody({
                 <span onClick={(e) => e.stopPropagation()}>
                   <Checkbox
                     isSelected={c.completed}
-                    onChange={() => void actions.toggleTask(c.id)}
+                    onChange={() =>
+                      actions.requestConfirm({
+                        title: c.completed ? "取消完成" : "完成子任务",
+                        message: `将子任务「${c.title}」标记为${c.completed ? "未完成" : "已完成"}？`,
+                        confirmLabel: c.completed ? "取消完成" : "完成",
+                        action: () => actions.toggleTask(c.id),
+                      })
+                    }
                     data-testid={`subtask-check-${c.title}`}
                     aria-label={c.completed ? "标记子任务未完成" : "完成子任务"}
                   >
@@ -449,7 +471,14 @@ function DetailBody({
                 <Button
                   isIconOnly
                   variant="ghost"
-                  onPress={() => void actions.deleteTask(c.id)}
+                  onPress={() =>
+                    actions.requestConfirm({
+                      title: "删除子任务",
+                      message: `将子任务「${c.title}」移到回收站？`,
+                      confirmLabel: "删除",
+                      action: () => actions.deleteTask(c.id),
+                    })
+                  }
                   aria-label="删除子任务"
                   className="shrink-0 text-zinc-400 opacity-0 transition hover:text-red-500 group-hover/sub:opacity-100"
                 >

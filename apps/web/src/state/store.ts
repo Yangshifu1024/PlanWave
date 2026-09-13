@@ -67,6 +67,18 @@ interface AppState {
   updateMessage: string | null;
   /** Web 端：服务器部署版本新于页面构建版本，提示刷新。 */
   webStale: boolean;
+  /** 设置弹框（外观/网络/关于）开关。 */
+  settingsOpen: boolean;
+  /** 通用确认弹框：确认后执行 action（退出登录/完成任务/删除任务等）。 */
+  confirm: ConfirmRequest | null;
+}
+
+/** 通用确认请求：确认后执行 action。 */
+export interface ConfirmRequest {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  action: () => void | Promise<void>;
 }
 
 interface AppStore extends AppState {
@@ -96,6 +108,8 @@ export const useApp = create<AppStore>()((set) => ({
   updateError: null,
   updateMessage: null,
   webStale: false,
+  settingsOpen: false,
+  confirm: null,
   setPartial: (p) => set(p),
 }));
 
@@ -118,6 +132,16 @@ function applyTheme(theme: Theme): void {
     theme === "dark" ||
     (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
   root.classList.toggle("dark", dark);
+}
+
+// 「跟随系统」主题实时跟随 OS 深浅色切换（仅 system 档响应）；
+// jsdom 无 matchMedia，测试环境守卫
+if (typeof window.matchMedia === "function") {
+  window
+    .matchMedia("(prefers-color-scheme: dark)")
+    .addEventListener("change", () => {
+      if (useApp.getState().theme === "system") applyTheme("system");
+    });
 }
 
 export const actions = {
@@ -426,6 +450,23 @@ export const actions = {
     }
     latest.setPartial({ purgeConfirm: null });
     await afterMutate();
+  },
+
+  openSettings(): void {
+    useApp.getState().setPartial({ settingsOpen: true });
+  },
+
+  closeSettings(): void {
+    useApp.getState().setPartial({ settingsOpen: false });
+  },
+
+  /** 请求用户确认（通用确认弹框）：确认后执行 action，取消则丢弃。 */
+  requestConfirm(confirm: ConfirmRequest): void {
+    useApp.getState().setPartial({ confirm });
+  },
+
+  clearConfirm(): void {
+    useApp.getState().setPartial({ confirm: null });
   },
 
   /** 添加子任务：子任务 = 带 parent_id 的普通任务，项目归属继承父任务。 */

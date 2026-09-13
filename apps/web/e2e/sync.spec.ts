@@ -10,6 +10,11 @@ function row(page: Page, title: string) {
   return page.locator(`[data-testid="task-row"][data-task-title="${title}"]`);
 }
 
+/** 完成任务/删除任务的确认弹框：点确认。 */
+async function acceptConfirm(page: Page): Promise<void> {
+  await page.getByTestId("confirm-accept").click();
+}
+
 /** 等待服务器地址探测通过（凭据输入解锁的前置条件）。 */
 async function waitServerChecked(page: Page): Promise<void> {
   await expect(page.getByTestId("server-check")).toContainText("服务器版本", {
@@ -75,10 +80,12 @@ test.describe.serial("PlanWave Web E2E", () => {
     });
     await expect(row(page, "写周报").getByText("工作", { exact: true })).toBeVisible();
 
-    // 勾选完成 → 删除线
+    // 勾选完成（带确认弹框）→ 删除线；再取消完成
     await page.getByTestId("check-写周报").click();
+    await acceptConfirm(page);
     await expect(row(page, "写周报").locator("span.line-through")).toBeVisible({ timeout: 10_000 });
     await page.getByTestId("check-写周报").click();
+    await acceptConfirm(page);
 
     // 搜索
     await page.getByTestId("search-input").fill("周报");
@@ -104,6 +111,7 @@ test.describe.serial("PlanWave Web E2E", () => {
     // 删除 → 回收站 → 恢复
     await row(page, "写周报").click();
     await page.getByTestId("detail-delete").click();
+    await acceptConfirm(page);
     await expect(row(page, "写周报")).not.toBeVisible();
     await page.getByTestId("nav-trash").click();
     await expect(row(page, "写周报")).toBeVisible({ timeout: 10_000 });
@@ -116,6 +124,7 @@ test.describe.serial("PlanWave Web E2E", () => {
     await expect(row(page, "写周报")).toBeVisible({ timeout: 10_000 });
     await row(page, "写周报").click();
     await page.getByTestId("detail-delete").click();
+    await acceptConfirm(page);
     await expect(row(page, "写周报")).not.toBeVisible();
     await page.getByTestId("nav-trash").click();
     await expect(row(page, "写周报")).toBeVisible({ timeout: 10_000 });
@@ -137,6 +146,7 @@ test.describe.serial("PlanWave Web E2E", () => {
       await expect(row(page, title)).toBeVisible({ timeout: 10_000 });
       await row(page, title).click();
       await page.getByTestId("detail-delete").click();
+      await acceptConfirm(page);
       await expect(row(page, title)).not.toBeVisible();
     }
     await page.getByTestId("nav-trash").click();
@@ -160,6 +170,7 @@ test.describe.serial("PlanWave Web E2E", () => {
     await expect(row(page, "任务丙")).toBeVisible({ timeout: 10_000 });
     await row(page, "任务丙").click();
     await page.getByTestId("detail-delete").click();
+    await acceptConfirm(page);
     await expect(row(page, "任务丙")).not.toBeVisible();
     await page.getByTestId("nav-trash").click();
     await expect(row(page, "任务丙")).toBeVisible({ timeout: 10_000 });
@@ -201,6 +212,7 @@ test.describe.serial("PlanWave Web E2E", () => {
 
     // B 勾选完成 → A 手动刷新后看到删除线
     await b.getByTestId("check-刷新同步任务").click();
+    await b.getByTestId("confirm-accept").click();
     await expect
       .poll(
         async () => {
@@ -215,6 +227,7 @@ test.describe.serial("PlanWave Web E2E", () => {
     // A 软删后从回收站彻底删除 → B 手动刷新后永久消失
     await row(a, "刷新同步任务").click();
     await a.getByTestId("detail-delete").click();
+    await a.getByTestId("confirm-accept").click();
     await expect(row(a, "刷新同步任务")).not.toBeVisible();
     await a.getByTestId("nav-trash").click();
     await expect(row(a, "刷新同步任务")).toBeVisible({ timeout: 10_000 });
