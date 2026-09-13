@@ -36,6 +36,8 @@ pub fn task_defaults(id: &Id) -> TaskRecord {
         labels: Vec::new(),
         sort_order: 0.0,
         deleted: false,
+        parent_id: String::new(),
+        recurrence: None,
     }
 }
 
@@ -87,6 +89,18 @@ pub fn apply_task_record(rec: &mut TaskRecord, patch: &TaskPatch) {
     }
     if let Some(v) = patch.deleted {
         rec.deleted = v;
+    }
+    if let Some(v) = &patch.recurrence {
+        rec.recurrence = match v {
+            Set::Clear => None,
+            Set::Value(rule) => Some(rule.clone()),
+        };
+    }
+    if let Some(v) = &patch.parent_id {
+        rec.parent_id = match v {
+            Set::Clear => String::new(),
+            Set::Value(id) => id.clone(),
+        };
     }
 }
 

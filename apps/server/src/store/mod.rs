@@ -58,6 +58,9 @@ pub trait Store: Send + Sync + 'static {
     /// 拉取 (since, since+limit] 的定序 op 与当前 latest_seq。
     async fn pull(&self, since: u64, limit: u32) -> StoreResult<(Vec<SequencedOp>, u64)>;
     async fn latest_seq(&self) -> StoreResult<u64>;
+    /// 权威投影快照（含墓碑）与当前 latest_seq：新设备引导用，
+    /// 替代「从 0 全量回放 oplog」。读取需与 latest_seq 一致（单事务/单锁）。
+    async fn snapshot(&self) -> StoreResult<sync_core::Snapshot>;
 }
 
 /// 按环境变量选择存储实现；DATABASE_URL 缺省时用内存存储。

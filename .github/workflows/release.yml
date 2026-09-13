@@ -255,6 +255,20 @@ jobs:
         with:
           name: web-dist
           path: apps/web/dist
+      # APK 内部版本号对齐 tag：显式写 tauri.properties（gradle 读取 versionName/versionCode），
+      # 不依赖 tauri CLI 的再生成行为
+      - name: 写入 Android 版本号
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          MAJOR=$(echo "$VERSION" | cut -d. -f1)
+          MINOR=$(echo "$VERSION" | cut -d. -f2)
+          PATCH=$(echo "$VERSION" | cut -d. -f3)
+          CODE=$((MAJOR * 1000000 + MINOR * 1000 + PATCH))
+          cat > apps/client/gen/android/app/tauri.properties <<EOF
+          tauri.android.versionName=${VERSION}
+          tauri.android.versionCode=${CODE}
+          EOF
+          cat apps/client/gen/android/app/tauri.properties
       - name: Tauri android build（apk）
         env:
           TAURI_ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/planwave.keystore
@@ -338,6 +352,9 @@ jobs:
     needs: [docker-server, docker-web, desktop-windows, desktop-linux, desktop-macos, android]
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 生成发布日志需要完整历史与上一个 tag
+          fetch-depth: 0
       # 只取客户端产物（client-*）；buildx 自动上传的 *.dockerbuild 构建记录
       # 不需要，且全量下载在某些 artifact 上会反复重试失败
       - uses: actions/download-artifact@v4
@@ -346,15 +363,39 @@ jobs:
           merge-multiple: true
           path: release
       # merge-multiple 会保留各 artifact 内部的目录结构（appimage/ deb/ …），
-      # 统一摊平到 upload/ 再上传
+      # 统一摊平到 upload/ 再上传；APK 按版本重命名（与其他端产物命名对齐）
       - name: 整理产物
         run: |
+          VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p upload
           find release -type f \( -name "*.exe" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.dmg" -o -name "*.apk" \) \
             -exec cp {} upload/ \;
+          for f in upload/*.apk; do
+            [ -e "$f" ] || continue
+            mv "$f" "upload/PlanWave_${VERSION}_universal.apk"
+          done
           ls -la upload/
+      # 直推 main 没有 PR，generate_release_notes 只会给出 Full Changelog 链接；
+      # 这里显式列出与上一个 tag 之间的全部 commit，GitHub 自动生成的
+      # 说明（含 Full Changelog）会追加在该正文之后
+      - name: 生成发布日志
+        run: |
+          PREV=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+          if [ -n "$PREV" ]; then
+            RANGE="${PREV}..${GITHUB_REF_NAME}"
+            echo "范围: ${RANGE}"
+          else
+            RANGE="${GITHUB_REF_NAME}"
+            echo "范围: 首个 tag，取全部历史"
+          fi
+          {
+            echo "## 更新内容"
+            git log --no-decorate --format='- %s (%h)' "$RANGE"
+          } > body.md
+          cat body.md
       - name: 上传到 Release
         uses: softprops/action-gh-release@v2
         with:
           files: upload/*
+          body_path: body.md
           generate_release_notes: true

@@ -24,7 +24,7 @@ pub use merge::{
     project_defaults, task_defaults,
 };
 pub use model::{
-    Id, Op, Patch, ProjectPatch, ProjectRecord, SequencedOp, Set, SyncError, SyncMeta, TaskPatch,
-    TaskRecord,
+    Id, Op, Patch, ProjectPatch, ProjectRecord, RecurrenceFreq, RecurrenceRule, SequencedOp, Set,
+    Snapshot, SyncError, SyncMeta, TaskPatch, TaskRecord,
 };
 pub use replay::{ApplyOutcome, ReplayState};

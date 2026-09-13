@@ -8,6 +8,7 @@ pub mod transport;
 
 use idb_storage::IdbStorage;
 use sync_core::client::Client;
+use sync_core::ClientStorage;
 use transport::HttpTransport;
 use wasm_bindgen::prelude::*;
 
@@ -79,9 +80,18 @@ impl PlanWaveClient {
         self.transport.logout();
     }
 
-    /// 启动引擎：确保设备标识、拉取增量。
+    /// 启动引擎：确保设备标识、追平远端（新设备走快照引导）。
     pub async fn start(&self) -> Result<(), JsValue> {
-        self.client.start().await.map(|_| ()).map_err(js_err)
+        match self.client.start().await {
+            Ok(_) => {
+                self.mark_sync_ok(None, None).await?;
+                Ok(())
+            }
+            Err(e) => {
+                self.mark_sync_err(&e).await;
+                Err(js_err(e))
+            }
+        }
     }
 
     /// 本地变更唯一入口：`entity_kind` 为 "task" | "project"，`patch_json` 为字段 patch JSON
@@ -104,13 +114,68 @@ impl PlanWaveClient {
 
     /// 推送本地积压，返回推送条数。
     pub async fn flush(&self) -> Result<u32, JsValue> {
-        let pushed = self.client.flush().await.map_err(js_err)?;
-        Ok(pushed as u32)
+        match self.client.flush().await {
+            Ok(n) => {
+                self.mark_sync_ok(None, Some(n as u64)).await?;
+                Ok(n as u32)
+            }
+            Err(e) => {
+                self.mark_sync_err(&e).await;
+                Err(js_err(e))
+            }
+        }
     }
 
     /// 刷新 = 推送积压 + 增量拉取（手动刷新/轮询统一入口）。
     pub async fn refresh(&self) -> Result<(), JsValue> {
-        self.client.refresh().await.map(|_| ()).map_err(js_err)
+        match self.client.refresh().await {
+            Ok(pulled) => {
+                self.mark_sync_ok(Some(pulled as u64), None).await?;
+                Ok(())
+            }
+            Err(e) => {
+                self.mark_sync_err(&e).await;
+                Err(js_err(e))
+            }
+        }
+    }
+
+    /// 同步详情（同步状态页）：meta + pending 队列 + 最近 op 日志。
+    /// `limit` 限制两个列表各返回的条数（总量仍返回 count）。
+    pub async fn sync_details(&self, limit: u32) -> Result<JsValue, JsValue> {
+        let storage = self.client.storage();
+        let meta = storage.meta().await.map_err(js_err)?;
+        let mut pending = storage.pending().await.map_err(js_err)?;
+        let count = pending.len();
+        pending.truncate(limit as usize);
+        let recent = storage.recent_ops(limit).await.map_err(js_err)?;
+        to_js(&serde_json::json!({
+            "meta": meta,
+            "pending": { "count": count, "ops": pending },
+            "recent_ops": recent,
+        }))
+    }
+
+    /// 同步成功收尾：更新 last_sync_at/last_error 与 push/pull 观测值。
+    async fn mark_sync_ok(&self, pulled: Option<u64>, pushed: Option<u64>) -> Result<(), JsValue> {
+        let mut meta = self.client.storage().meta().await.map_err(js_err)?;
+        meta.last_sync_at = Some(js_sys::Date::now() as i64);
+        meta.last_error = None;
+        if let Some(p) = pulled {
+            meta.last_pulled = Some(p);
+        }
+        if let Some(p) = pushed {
+            meta.last_pushed = Some(p);
+        }
+        self.client.storage().set_meta(meta).await.map_err(js_err)
+    }
+
+    /// 同步失败收尾：错误文案落到 meta（成功后清空），供详情页展示。
+    async fn mark_sync_err(&self, e: &sync_core::ClientError) {
+        if let Ok(mut meta) = self.client.storage().meta().await {
+            meta.last_error = Some(e.to_string());
+            let _ = self.client.storage().set_meta(meta).await;
+        }
     }
 
     pub async fn list_projects(&self) -> Result<JsValue, JsValue> {

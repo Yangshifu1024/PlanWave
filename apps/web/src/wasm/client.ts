@@ -4,7 +4,7 @@
 import init from "./pkg/planwave.js";
 import { PlanWaveClient } from "./pkg/planwave.js";
 import { getApiBase } from "../lib/platform";
-import type { ProjectRecord, TaskRecord } from "../types";
+import type { ProjectRecord, SyncDetails, TaskRecord } from "../types";
 
 export type { PlanWaveClient };
 
@@ -57,6 +57,7 @@ export interface WasmClientApi {
   refresh(): Promise<void>;
   listProjects(): Promise<ProjectRecord[]>;
   listTasks(): Promise<TaskRecord[]>;
+  syncDetails(limit: number): Promise<SyncDetails>;
   clearLocal(): Promise<void>;
 }
 
@@ -76,6 +77,7 @@ export function wrapClient(raw: PlanWaveClient): WasmClientApi {
     refresh: () => raw.refresh(),
     listProjects: async () => JSON.parse(await raw.list_projects()) as ProjectRecord[],
     listTasks: async () => JSON.parse(await raw.list_tasks()) as TaskRecord[],
+    syncDetails: async (limit) => JSON.parse(await raw.sync_details(limit)) as SyncDetails,
     clearLocal: () => raw.clear_local(),
   };
 }

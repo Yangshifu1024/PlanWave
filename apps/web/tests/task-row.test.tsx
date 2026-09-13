@@ -28,6 +28,8 @@ function task(partial: Partial<TaskRecord>): TaskRecord {
     labels: [],
     sort_order: 0,
     deleted: false,
+    parent_id: "",
+    recurrence: null,
     ...partial,
   };
 }

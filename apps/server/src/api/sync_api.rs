@@ -6,7 +6,7 @@ use crate::error::{ApiError, ApiResult};
 use crate::AppState;
 use axum::extract::{Query, State};
 use axum::Json;
-use sync_core::SyncError;
+use sync_core::{Snapshot, SyncError};
 
 const MAX_OPS_PER_PUSH: usize = 5000;
 const DEFAULT_PULL_LIMIT: u32 = 1000;
@@ -62,4 +62,14 @@ pub async fn pull(
         latest_seq: latest,
         has_more,
     }))
+}
+
+/// 权威投影快照：新设备引导用，一次请求拿到全部数据，替代全量 oplog 回放。
+/// seq 语义与 pull 一致——客户端以此推进 last_pulled_seq，之后照常增量拉取。
+pub async fn snapshot(
+    State(state): State<AppState>,
+    _user: AuthUser,
+) -> ApiResult<Json<Snapshot>> {
+    let snap = state.store.snapshot().await?;
+    Ok(Json(snap))
 }

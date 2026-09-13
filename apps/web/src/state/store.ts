@@ -4,10 +4,11 @@
 //! store 只负责把本地库的最新状态搬进 React。
 
 import { create } from "zustand";
-import type { ProjectRecord, TaskRecord } from "../types";
+import type { ProjectRecord, SyncDetails, TaskRecord } from "../types";
 import { isTauri, applyServerAddress } from "../lib/platform";
-import { ensureTypedClient, hasTokens } from "../wasm/client";
+import { ensureTypedClient, hasTokens, type WasmClientApi } from "../wasm/client";
 import { requestReminderPermission, rescheduleReminders } from "../lib/reminders";
+import { nextOccurrenceMs } from "../lib/recurrence";
 
 export type ViewKind =
   | { kind: "smart"; smart: "today" | "upcoming" | "all" | "trash" }
@@ -25,6 +26,11 @@ interface AppState {
   search: string;
   selectedTaskId: string | null;
   syncStatus: "offline" | "syncing" | "online";
+  /** 刷新进行中（下拉刷新指示器/同步按钮共用）。 */
+  refreshing: boolean;
+  /** 同步状态详情页开关与数据。 */
+  syncSheetOpen: boolean;
+  syncDetails: SyncDetails | null;
   theme: Theme;
   detailOpen: boolean;
   sidebarOpen: boolean;
@@ -44,6 +50,9 @@ export const useApp = create<AppStore>()((set) => ({
   search: "",
   selectedTaskId: null,
   syncStatus: "offline",
+  refreshing: false,
+  syncSheetOpen: false,
+  syncDetails: null,
   theme: "system",
   detailOpen: false,
   sidebarOpen: false,
@@ -209,13 +218,37 @@ export const actions = {
   /** 手动刷新：推送本地积压 + 拉取远端增量。 */
   async refresh(): Promise<void> {
     const client = await ensureTypedClient();
+    useApp.getState().setPartial({ refreshing: true, syncStatus: "syncing" });
     try {
       await client.refresh();
       useApp.getState().setPartial({ syncStatus: "online" });
     } catch {
       useApp.getState().setPartial({ syncStatus: "offline" });
+    } finally {
+      useApp.getState().setPartial({ refreshing: false });
     }
     await actions.reload();
+  },
+
+  // ---- 同步状态详情页 ----
+
+  async openSyncSheet(): Promise<void> {
+    useApp.getState().setPartial({ syncSheetOpen: true });
+    await actions.loadSyncDetails();
+  },
+
+  closeSyncSheet(): void {
+    useApp.getState().setPartial({ syncSheetOpen: false });
+  },
+
+  async loadSyncDetails(): Promise<void> {
+    const client = await ensureTypedClient();
+    try {
+      const details = await client.syncDetails(50);
+      useApp.getState().setPartial({ syncDetails: details });
+    } catch {
+      /* 引擎不可用时保持旧数据 */
+    }
   },
 
   selectTask(id: string | null): void {
@@ -288,7 +321,12 @@ export const actions = {
     const t = useApp.getState().tasks.find((x) => x.id === id);
     if (!t) return;
     const client = await ensureTypedClient();
+    const completing = !t.completed;
     await client.mutate("task", id, JSON.stringify({ completed: !t.completed }));
+    // 完成带重复规则的任务：物化下一次到期的新实例（取消完成不物化）
+    if (completing && t.recurrence) {
+      await materializeNextOccurrence(client, t);
+    }
     await afterMutate();
   },
 
@@ -311,9 +349,73 @@ export const actions = {
     await client.mutate("task", id, JSON.stringify({ deleted: false }));
     await afterMutate();
   },
+
+  /** 添加子任务：子任务 = 带 parent_id 的普通任务，项目归属继承父任务。 */
+  async addSubtask(parentId: string, title: string): Promise<void> {
+    const parent = useApp.getState().tasks.find((x) => x.id === parentId);
+    if (!parent || !title.trim()) return;
+    const client = await ensureTypedClient();
+    await client.mutate(
+      "task",
+      crypto.randomUUID(),
+      JSON.stringify({
+        title: title.trim(),
+        sort_order: Date.now(),
+        parent_id: parentId,
+        ...(parent.project_id ? { project_id: parent.project_id } : {}),
+      }),
+    );
+    await afterMutate();
+  },
 };
 
 // ---- 内部工具 ----
+
+/**
+ * 物化重复任务的下一次实例：克隆本体字段（标题/备注/标签/优先级/项目/
+ * 重复规则），到期 = nextOccurrence(规则, max(到期日, 现在))；
+ * 未完成的子任务一并克隆。当前任务保留为已完成。
+ */
+async function materializeNextOccurrence(client: WasmClientApi, t: TaskRecord): Promise<void> {
+  const rule = t.recurrence;
+  if (!rule) return;
+  const now = Date.now();
+  const nextDue = nextOccurrenceMs(rule, t.due_date ?? now, now);
+  const newId = crypto.randomUUID();
+  await client.mutate(
+    "task",
+    newId,
+    JSON.stringify({
+      title: t.title,
+      notes: t.notes,
+      labels: t.labels,
+      priority: t.priority,
+      sort_order: now,
+      due_date: nextDue,
+      recurrence: rule,
+      ...(t.project_id ? { project_id: t.project_id } : {}),
+    }),
+  );
+  const children = useApp
+    .getState()
+    .tasks.filter((c) => c.parent_id === t.id && !c.deleted && !c.completed);
+  for (const c of children) {
+    await client.mutate(
+      "task",
+      crypto.randomUUID(),
+      JSON.stringify({
+        title: c.title,
+        notes: c.notes,
+        labels: c.labels,
+        priority: c.priority,
+        sort_order: c.sort_order,
+        parent_id: newId,
+        ...(c.project_id ? { project_id: c.project_id } : {}),
+        ...(c.due_date !== null ? { due_date: c.due_date } : {}),
+      }),
+    );
+  }
+}
 
 /** 本地写后的统一收尾：立即刷新 UI，并安排防抖自动推送（连续编辑合并为一次 push+pull）。 */
 async function afterMutate(): Promise<void> {

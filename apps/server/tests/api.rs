@@ -356,3 +356,120 @@ async fn push_rejects_invalid_ops_atomically() {
     let body: Value = res.json().await.unwrap();
     assert_eq!(body["ops"].as_array().unwrap().len(), 0);
 }
+
+#[tokio::test]
+async fn push_accepts_subtask_and_recurrence_fields() {
+    let app = App::new().await;
+    let token = app.register_and_login("device-1").await;
+
+    let parent = uuid::Uuid::new_v4().to_string();
+    let child = uuid::Uuid::new_v4().to_string();
+    let ops = vec![
+        task_op(
+            "device-1",
+            uuid::Uuid::new_v4().to_string().as_str(),
+            &parent,
+            json!({"type":"task","title":"父任务","recurrence":{"freq":"weekly","interval":2,"weekdays":[1,3,5]}}),
+        ),
+        task_op(
+            "device-1",
+            uuid::Uuid::new_v4().to_string().as_str(),
+            &child,
+            json!({"type":"task","title":"子任务","parent_id":parent}),
+        ),
+        // 清空重复规则：recurrence=null
+        task_op(
+            "device-1",
+            uuid::Uuid::new_v4().to_string().as_str(),
+            &parent,
+            json!({"type":"task","recurrence":null}),
+        ),
+    ];
+    let res = app
+        .http
+        .post(app.url("/sync/push"))
+        .bearer_auth(&token)
+        .json(&json!({ "device_id": "device-1", "ops": ops }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200, "{}", res.text().await.unwrap());
+
+    let res = app
+        .http
+        .get(app.url("/sync/snapshot"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200, "{}", res.text().await.unwrap());
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(body["seq"], json!(3));
+    let tasks = body["tasks"].as_array().unwrap();
+    assert_eq!(tasks.len(), 2);
+
+    let parent_row = tasks.iter().find(|t| t["id"] == json!(parent)).unwrap();
+    // LWW：最后一条 recurrence 清空胜出
+    assert_eq!(parent_row["recurrence"], Value::Null);
+    let child_row = tasks.iter().find(|t| t["id"] == json!(child)).unwrap();
+    assert_eq!(child_row["parent_id"], json!(parent));
+    assert_eq!(child_row["title"], json!("子任务"));
+}
+
+#[tokio::test]
+async fn snapshot_reflects_projection_with_tombstones_and_auth() {
+    let app = App::new().await;
+
+    // 未鉴权拒绝
+    let res = app.http.get(app.url("/sync/snapshot")).send().await.unwrap();
+    assert_eq!(res.status(), 401);
+
+    let token = app.register_and_login("device-1").await;
+    let project = uuid::Uuid::new_v4().to_string();
+    let task = uuid::Uuid::new_v4().to_string();
+    let ops = vec![
+        task_op(
+            "device-1",
+            uuid::Uuid::new_v4().to_string().as_str(),
+            &project,
+            json!({"type":"project","name":"工作"}),
+        ),
+        task_op(
+            "device-1",
+            uuid::Uuid::new_v4().to_string().as_str(),
+            &task,
+            json!({"type":"task","title":"被删任务"}),
+        ),
+        task_op(
+            "device-1",
+            uuid::Uuid::new_v4().to_string().as_str(),
+            &task,
+            json!({"type":"task","deleted":true}),
+        ),
+    ];
+    let res = app
+        .http
+        .post(app.url("/sync/push"))
+        .bearer_auth(&token)
+        .json(&json!({ "device_id": "device-1", "ops": ops }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+
+    let res = app
+        .http
+        .get(app.url("/sync/snapshot"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    let body: Value = res.json().await.unwrap();
+    // 快照含墓碑记录（与回放语义一致，客户端不会「复活」已删实体）
+    assert_eq!(body["seq"], json!(3));
+    assert_eq!(body["projects"].as_array().unwrap().len(), 1);
+    assert_eq!(body["projects"][0]["name"], json!("工作"));
+    let tasks = body["tasks"].as_array().unwrap();
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0]["deleted"], json!(true));
+}

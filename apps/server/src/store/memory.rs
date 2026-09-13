@@ -160,6 +160,15 @@ impl Store for MemoryStore {
             .map(|s| s.seq)
             .unwrap_or(0))
     }
+
+    async fn snapshot(&self) -> StoreResult<sync_core::Snapshot> {
+        let data = self.guard.data.lock().unwrap();
+        Ok(sync_core::Snapshot {
+            seq: data.ops.last().map(|s| s.seq).unwrap_or(0),
+            projects: data.projects.values().cloned().collect(),
+            tasks: data.tasks.values().cloned().collect(),
+        })
+    }
 }
 
 // 供测试断言投影状态（仅内存实现提供）。

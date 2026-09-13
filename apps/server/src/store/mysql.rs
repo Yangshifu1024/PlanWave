@@ -8,7 +8,7 @@ use super::{Account, Store, StoreError, StoreResult};
 use async_trait::async_trait;
 use sync_core::{
     apply_project_record, apply_task_record, project_defaults, task_defaults, Op, Patch,
-    ProjectRecord, SequencedOp, TaskRecord,
+    ProjectRecord, SequencedOp, Snapshot, TaskRecord,
 };
 
 #[derive(Clone)]
@@ -29,12 +29,14 @@ struct ProjectRow {
 struct TaskRow {
     id: String,
     project_id: String,
+    parent_id: String,
     title: String,
     notes: String,
     due_date: Option<i64>,
     priority: i32,
     completed: bool,
-    labels: String, // JSON 字符串
+    labels: String,     // JSON 字符串
+    recurrence: Option<String>, // JSON 字符串，NULL = 不重复
     sort_order: f64,
     deleted: bool,
 }
@@ -66,6 +68,14 @@ impl TryFrom<TaskRow> for TaskRecord {
                 .map_err(|e| StoreError::Db(format!("labels JSON 解析失败: {e}")))?,
             sort_order: r.sort_order,
             deleted: r.deleted,
+            parent_id: r.parent_id,
+            recurrence: r
+                .recurrence
+                .map(|s| {
+                    serde_json::from_str(&s)
+                        .map_err(|e| StoreError::Db(format!("recurrence JSON 解析失败: {e}")))
+                })
+                .transpose()?,
         })
     }
 }
@@ -237,8 +247,8 @@ impl Store for MySqlStore {
                 }
                 Patch::Task(p) => {
                     let row: Option<TaskRow> = sqlx::query_as(
-                        // labels 列是 JSON 类型：CAST 成 CHAR 才能按 String 解码（sqlx 类型兼容规则）
-                        "SELECT id, project_id, title, notes, due_date, priority, completed, CAST(labels AS CHAR) AS labels, sort_order, deleted
+                        // labels/recurrence 列是 JSON 类型：CAST 成 CHAR 才能按 String 解码（sqlx 类型兼容规则）
+                        "SELECT id, project_id, parent_id, title, notes, due_date, priority, completed, CAST(labels AS CHAR) AS labels, CAST(recurrence AS CHAR) AS recurrence, sort_order, deleted
                          FROM tasks WHERE id = ? FOR UPDATE",
                     )
                     .bind(&op.entity_id)
@@ -252,22 +262,31 @@ impl Store for MySqlStore {
                     apply_task_record(&mut rec, p);
                     let labels_json = serde_json::to_string(&rec.labels)
                         .map_err(|e| StoreError::Db(format!("labels 序列化失败: {e}")))?;
+                    let recurrence_json = rec
+                        .recurrence
+                        .as_ref()
+                        .map(serde_json::to_string)
+                        .transpose()
+                        .map_err(|e| StoreError::Db(format!("recurrence 序列化失败: {e}")))?;
                     sqlx::query(
-                        "INSERT INTO tasks (id, project_id, title, notes, due_date, priority, completed, labels, sort_order, deleted)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, CAST(? AS JSON), ?, ?) AS new
+                        "INSERT INTO tasks (id, project_id, parent_id, title, notes, due_date, priority, completed, labels, recurrence, sort_order, deleted)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), ?, ?) AS new
                          ON DUPLICATE KEY UPDATE
-                           project_id = new.project_id, title = new.title, notes = new.notes,
+                           project_id = new.project_id, parent_id = new.parent_id, title = new.title, notes = new.notes,
                            due_date = new.due_date, priority = new.priority, completed = new.completed,
-                           labels = new.labels, sort_order = new.sort_order, deleted = new.deleted",
+                           labels = new.labels, recurrence = new.recurrence,
+                           sort_order = new.sort_order, deleted = new.deleted",
                     )
                     .bind(&rec.id)
                     .bind(&rec.project_id)
+                    .bind(&rec.parent_id)
                     .bind(&rec.title)
                     .bind(&rec.notes)
                     .bind(rec.due_date)
                     .bind(rec.priority)
                     .bind(rec.completed)
                     .bind(&labels_json)
+                    .bind(&recurrence_json)
                     .bind(rec.sort_order)
                     .bind(rec.deleted)
                     .execute(&mut *tx)
@@ -323,5 +342,39 @@ impl Store for MySqlStore {
             .await
             .map_err(db)?;
         Ok(latest as u64)
+    }
+
+    async fn snapshot(&self) -> StoreResult<Snapshot> {
+        // 单事务：latest_seq 与投影读自同一一致性视图（InnoDB REPEATABLE READ）
+        let mut tx = self.pool.begin().await.map_err(db)?;
+        let latest: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(seq), 0) FROM ops")
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(db)?;
+        let project_rows: Vec<ProjectRow> = sqlx::query_as(
+            "SELECT id, name, color, sort_order, deleted FROM projects",
+        )
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(db)?;
+        let task_rows: Vec<TaskRow> = sqlx::query_as(
+            "SELECT id, project_id, parent_id, title, notes, due_date, priority, completed, CAST(labels AS CHAR) AS labels, CAST(recurrence AS CHAR) AS recurrence, sort_order, deleted
+             FROM tasks",
+        )
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+
+        let projects = project_rows.into_iter().map(ProjectRecord::from).collect();
+        let mut tasks = Vec::with_capacity(task_rows.len());
+        for row in task_rows {
+            tasks.push(TaskRecord::try_from(row)?);
+        }
+        Ok(Snapshot {
+            seq: latest as u64,
+            projects,
+            tasks,
+        })
     }
 }

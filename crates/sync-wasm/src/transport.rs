@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use gloo_net::http::{Request, Response};
 use gloo_storage::Storage;
 use serde::{Deserialize, Serialize};
-use sync_core::{ClientError, Op, PullPage, PushAck, SyncTransport};
+use sync_core::{ClientError, Op, PullPage, PushAck, Snapshot, SyncTransport};
 
 const TOKEN_KEY: &str = "planwave.tokens";
 
@@ -193,5 +193,10 @@ impl SyncTransport for HttpTransport {
             true,
         )
         .await
+    }
+
+    async fn snapshot(&self) -> Result<Snapshot, ClientError> {
+        self.send_json("GET", "/sync/snapshot", None::<&()>, true)
+            .await
     }
 }

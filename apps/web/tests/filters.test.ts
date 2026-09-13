@@ -1,7 +1,7 @@
 //! 视图筛选与排序的纯函数测试。
 
 import { describe, expect, it } from "vitest";
-import { countTasks, filterTasks, sortTasks } from "../src/lib/filters";
+import { countTasks, filterTasks, sortTasks, subtaskProgress, visibleTree } from "../src/lib/filters";
 import type { TaskRecord } from "../src/types";
 
 const DAY = 86_400_000;
@@ -17,6 +17,8 @@ function task(partial: Partial<TaskRecord> & { id: string }): TaskRecord {
     labels: [],
     sort_order: 0,
     deleted: false,
+    parent_id: "",
+    recurrence: null,
     ...partial,
   };
 }
@@ -84,5 +86,70 @@ describe("filterTasks", () => {
       task({ id: "2", title: "b", due_date: now.getTime(), completed: true }),
     ];
     expect(countTasks(tasks, { kind: "smart", smart: "today" }, now)).toBe(1);
+  });
+});
+
+describe("visibleTree（子任务树）", () => {
+  const ALL = { kind: "smart", smart: "all" } as const;
+
+  it("子任务缩进挂在父任务下", () => {
+    const tasks = [
+      task({ id: "p", title: "父" }),
+      task({ id: "c1", title: "子1", parent_id: "p" }),
+      task({ id: "c2", title: "子2", parent_id: "p" }),
+    ];
+    const tree = visibleTree(tasks, ALL, "", now);
+    expect(tree).toHaveLength(1);
+    expect(tree[0]!.task.id).toBe("p");
+    expect(tree[0]!.children.map((c) => c.id)).toEqual(["c1", "c2"]);
+  });
+
+  it("父不在视图时命中的子任务提升为顶层（today 视图）", () => {
+    const tasks = [
+      task({ id: "p", title: "父：无截止" }),
+      task({ id: "c", title: "子：今天到期", parent_id: "p", due_date: now.getTime() }),
+    ];
+    const tree = visibleTree(tasks, { kind: "smart", smart: "today" }, "", now);
+    expect(tree).toHaveLength(1);
+    expect(tree[0]!.task.id).toBe("c");
+    expect(tree[0]!.children).toHaveLength(0);
+  });
+
+  it("搜索命中子任务而父未命中：子任务提升", () => {
+    const tasks = [
+      task({ id: "p", title: "买菜" }),
+      task({ id: "c", title: "买牛奶", parent_id: "p" }),
+    ];
+    const tree = visibleTree(tasks, ALL, "牛奶", now);
+    expect(tree.map((n) => n.task.id)).toEqual(["c"]);
+  });
+
+  it("父被删的孤儿子任务按顶层渲染", () => {
+    const tasks = [
+      task({ id: "p", title: "父（已删）", deleted: true }),
+      task({ id: "c", title: "孤儿", parent_id: "p" }),
+    ];
+    const tree = visibleTree(tasks, ALL, "", now);
+    expect(tree.map((n) => n.task.id)).toEqual(["c"]);
+    expect(tree[0]!.children).toHaveLength(0);
+  });
+
+  it("回收站视图平铺", () => {
+    const tasks = [
+      task({ id: "p", title: "父", deleted: true }),
+      task({ id: "c", title: "子", parent_id: "p", deleted: true }),
+    ];
+    const tree = visibleTree(tasks, { kind: "smart", smart: "trash" }, "", now);
+    expect(tree.map((n) => n.task.id)).toEqual(["p", "c"]);
+  });
+
+  it("subtaskProgress 统计非删除子任务", () => {
+    const tasks = [
+      task({ id: "p", title: "父" }),
+      task({ id: "c1", parent_id: "p", completed: true }),
+      task({ id: "c2", parent_id: "p" }),
+      task({ id: "c3", parent_id: "p", deleted: true }),
+    ];
+    expect(subtaskProgress(tasks, "p")).toEqual({ done: 1, total: 2 });
   });
 });

@@ -2,7 +2,9 @@
 //! 这些用例里的 JSON 字面量是两端的「接口冻结」凭证。
 
 use serde_json::{json, Value};
-use sync_core::{Op, Patch, ProjectPatch, SequencedOp, Set, TaskPatch};
+use sync_core::{
+    Op, Patch, ProjectPatch, RecurrenceFreq, RecurrenceRule, SequencedOp, Set, SyncMeta, TaskPatch,
+};
 
 #[test]
 fn task_patch_serializes_with_expected_shape() {
@@ -100,4 +102,117 @@ fn deserialize_from_frontend_style_json() {
         Patch::Task(p) => assert_eq!(p.title.as_deref(), Some("来自前端的任务")),
         _ => panic!("expected task patch"),
     }
+}
+
+#[test]
+fn recurrence_and_parent_id_serialize_with_expected_shape() {
+    let rule = RecurrenceRule {
+        freq: RecurrenceFreq::Weekly,
+        interval: 2,
+        weekdays: vec![1, 3, 5],
+    };
+    let set = Patch::Task(TaskPatch {
+        recurrence: Some(Set::Value(rule.clone())),
+        parent_id: Some(Set::Value("e2a4b98f-5e64-4a5e-b3c3-9c19a8778a11".into())),
+        ..Default::default()
+    });
+    let v = serde_json::to_value(&set).unwrap();
+    assert_eq!(
+        v,
+        json!({
+            "type": "task",
+            "recurrence": { "freq": "weekly", "interval": 2, "weekdays": [1, 3, 5] },
+            "parent_id": "e2a4b98f-5e64-4a5e-b3c3-9c19a8778a11"
+        })
+    );
+    let de: Patch = serde_json::from_value(v).unwrap();
+    assert_eq!(de, set);
+
+    // 清空：两个字段均以 null 出现
+    let clear = Patch::Task(TaskPatch {
+        recurrence: Some(Set::Clear),
+        parent_id: Some(Set::Clear),
+        ..Default::default()
+    });
+    let v = serde_json::to_value(&clear).unwrap();
+    assert_eq!(v, json!({ "type": "task", "recurrence": null, "parent_id": null }));
+
+    // 反序列化方向同样成立：显式 null = 清空（不是「不动」）
+    let de: Patch = serde_json::from_value(json!({ "type": "task", "recurrence": null })).unwrap();
+    assert_eq!(
+        de,
+        Patch::Task(TaskPatch {
+            recurrence: Some(Set::Clear),
+            ..Default::default()
+        })
+    );
+    // due_date 的 null 同理（清空截止日期）
+    let de: Patch = serde_json::from_value(json!({ "type": "task", "due_date": null })).unwrap();
+    assert_eq!(
+        de,
+        Patch::Task(TaskPatch {
+            due_date: Some(Set::Clear),
+            ..Default::default()
+        })
+    );
+
+    // 缺省 = 不动（不出现这两个键）
+    let untouched = Patch::Task(TaskPatch {
+        title: Some("x".into()),
+        ..Default::default()
+    });
+    let v = serde_json::to_value(&untouched).unwrap();
+    assert!(v.get("recurrence").is_none());
+    assert!(v.get("parent_id").is_none());
+}
+
+#[test]
+fn recurrence_empty_weekdays_omitted_and_defaults_apply() {
+    let rule = RecurrenceRule {
+        freq: RecurrenceFreq::Daily,
+        interval: 1,
+        weekdays: vec![],
+    };
+    let v = serde_json::to_value(&rule).unwrap();
+    assert_eq!(v, json!({ "freq": "daily", "interval": 1 }));
+    // interval 缺省 = 1，weekdays 缺省 = 空
+    let de: RecurrenceRule = serde_json::from_value(json!({ "freq": "monthly" })).unwrap();
+    assert_eq!(
+        de,
+        RecurrenceRule {
+            freq: RecurrenceFreq::Monthly,
+            interval: 1,
+            weekdays: vec![]
+        }
+    );
+}
+
+#[test]
+fn sync_meta_new_fields_are_backward_compatible() {
+    // 旧版本持久化的 meta JSON（只有三个键）必须能被读取
+    let old = json!({
+        "device_id": "device-a",
+        "lamport": 9,
+        "last_pulled_seq": 42
+    });
+    let de: SyncMeta = serde_json::from_value(old).unwrap();
+    assert_eq!(de.last_sync_at, None);
+    assert_eq!(de.last_error, None);
+    assert_eq!(de.last_pushed, None);
+    assert_eq!(de.last_pulled, None);
+
+    let meta = SyncMeta {
+        device_id: "d".into(),
+        lamport: 1,
+        last_pulled_seq: 2,
+        last_sync_at: Some(1_700_000_000_000),
+        last_error: Some("HTTP 500".into()),
+        last_pushed: Some(3),
+        last_pulled: Some(5),
+    };
+    let v = serde_json::to_value(&meta).unwrap();
+    assert_eq!(v["last_sync_at"], json!(1_700_000_000_000i64));
+    assert_eq!(v["last_error"], json!("HTTP 500"));
+    assert_eq!(v["last_pushed"], json!(3));
+    assert_eq!(v["last_pulled"], json!(5));
 }

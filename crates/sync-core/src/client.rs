@@ -12,7 +12,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::{Id, Op, Patch, SequencedOp, SyncMeta};
+use crate::model::{Id, Op, Patch, SequencedOp, Snapshot, SyncMeta};
 use std::cell::Cell;
 
 /// 客户端本地存储抽象（由各端实现：WASM 端 IndexedDB、测试端内存）。
@@ -20,7 +20,9 @@ use std::cell::Cell;
 /// 契约与前端 TypeScript 侧的 LocalStore 一致：
 /// - `apply_remote` 按 `op_id` 幂等去重，只应用未见过的 op；
 /// - `apply_local` 立即应用并自动进入 pending 队列；
-/// - `pending` 按产生顺序返回。
+/// - `pending` 按产生顺序返回；
+/// - `reset_with_snapshot` 只重置投影与游标，pending 队列与已见集合保留，
+///   且必须把 pending 中的 op 重新应用到投影（本地未同步编辑在快照引导后仍可见）。
 #[async_trait::async_trait(?Send)]
 pub trait ClientStorage: std::fmt::Debug {
     async fn meta(&self) -> Result<SyncMeta, ClientError>;
@@ -29,6 +31,7 @@ pub trait ClientStorage: std::fmt::Debug {
     async fn apply_local(&self, op: &Op) -> Result<(), ClientError>;
     async fn pending(&self) -> Result<Vec<Op>, ClientError>;
     async fn dequeue(&self, op_ids: &[Id]) -> Result<(), ClientError>;
+    async fn reset_with_snapshot(&self, snap: &Snapshot) -> Result<(), ClientError>;
 }
 
 /// 与服务端的传输抽象（Axum 客户端实现；测试用内存假件）。
@@ -36,6 +39,8 @@ pub trait ClientStorage: std::fmt::Debug {
 pub trait SyncTransport: std::fmt::Debug {
     async fn push(&self, device_id: &str, ops: &[Op]) -> Result<PushAck, ClientError>;
     async fn pull(&self, since: u64, limit: u32) -> Result<PullPage, ClientError>;
+    /// 权威投影快照（新设备引导）。旧服务端不支持时返回错误，调用方回退全量回放。
+    async fn snapshot(&self) -> Result<Snapshot, ClientError>;
 }
 
 /// 服务端 push 应答中单条 op 的落账记录（与 /sync/push 响应的 wire 格式一致）。
@@ -69,7 +74,7 @@ pub enum ClientError {
     Storage(String),
 }
 
-pub const PULL_PAGE_SIZE: u32 = 1000;
+pub const PULL_PAGE_SIZE: u32 = 5000;
 pub const MAX_OPS_PER_PUSH: usize = 500;
 
 /// 同步客户端状态机。
@@ -95,14 +100,29 @@ impl<S: ClientStorage, T: SyncTransport> Client<S, T> {
         &self.storage
     }
 
-    /// 应用启动：确保 device_id 存在并做一次全量增量拉取。
+    /// 应用启动：确保 device_id 存在并追平远端。
+    ///
+    /// 全新设备（游标为 0）优先走快照引导——一次请求拿到权威投影，
+    /// 免去全量 oplog 分页回放；快照不可用（旧服务端/网络失败）自动回退。
     pub async fn start(&self) -> Result<SyncMeta, ClientError> {
         let mut meta = self.storage.meta().await?;
         if meta.device_id.is_empty() {
             meta.device_id = uuid::Uuid::new_v4().to_string();
             self.storage.set_meta(meta.clone()).await?;
         }
-        self.pull_all().await?;
+        if meta.last_pulled_seq == 0 {
+            match self.transport.snapshot().await {
+                Ok(snap) => {
+                    self.storage.reset_with_snapshot(&snap).await?;
+                    return self.storage.meta().await;
+                }
+                Err(_) => {
+                    self.pull_all().await?;
+                }
+            }
+        } else {
+            self.pull_all().await?;
+        }
         self.storage.meta().await
     }
 

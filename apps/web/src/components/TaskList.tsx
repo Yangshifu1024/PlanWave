@@ -1,9 +1,11 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { Button, Input } from "@heroui/react";
 import { actions, useApp, type ViewKind } from "../state/store";
-import { filterTasks } from "../lib/filters";
+import { subtaskProgress, visibleTree } from "../lib/filters";
+import { usePullToRefresh } from "../lib/usePullToRefresh";
 import { isDesktopApp } from "../lib/platform";
 import { TaskRow } from "./TaskRow";
+import { SyncStatusSheet } from "./SyncStatusSheet";
 
 function viewTitle(view: ViewKind): string {
   switch (view.kind) {
@@ -18,7 +20,7 @@ function viewTitle(view: ViewKind): string {
   }
 }
 
-/** 中栏：视图标题 + 搜索 + 快速添加（标题 + 优先级） + 任务列表。 */
+/** 中栏：视图标题 + 搜索 + 快速添加（标题 + 优先级） + 任务列表（子任务缩进树）。 */
 export function TaskList() {
   const tasks = useApp((s) => s.tasks);
   const view = useApp((s) => s.view);
@@ -26,9 +28,12 @@ export function TaskList() {
   const projects = useApp((s) => s.projects);
   const [draft, setDraft] = useState("");
   const [priority, setPriority] = useState(0);
+  // 折叠的父任务 id 集合（列表本地状态）
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
 
-  const visible = useMemo(() => filterTasks(tasks, view, search), [tasks, view, search]);
+  const tree = useMemo(() => visibleTree(tasks, view, search), [tasks, view, search]);
   const isTrash = view.kind === "smart" && view.smart === "trash";
+  const { ref: listRef, pullPx, phase } = usePullToRefresh(() => actions.refresh());
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -36,6 +41,20 @@ export function TaskList() {
     setDraft("");
     setPriority(0);
   };
+
+  const toggleCollapse = (id: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const rowCount = tree.reduce((n, node) => n + 1 + node.children.length, 0);
 
   return (
     <>
@@ -111,16 +130,81 @@ export function TaskList() {
         </form>
       )}
 
-      <ul className="mt-3 flex-1 space-y-0.5 overflow-y-auto px-3 pb-8" data-testid="task-list">
-        {visible.map((t) => (
-          <TaskRow key={t.id} task={t} showProject={view.kind !== "project"} projects={projects} />
-        ))}
-        {visible.length === 0 && (
-          <li className="pt-16 text-center text-sm text-zinc-400" data-testid="empty-state">
-            {search ? "没有匹配的任务" : isTrash ? "回收站是空的" : "这里空空如也，添加一个任务吧"}
-          </li>
-        )}
-      </ul>
+      {/* 下拉刷新指示器：绝对定位于列表上方，随拉拽距离渐显 */}
+      <div className="relative mt-3 flex-1 min-h-0">
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-center text-xs text-zinc-400 transition-opacity"
+          style={{
+            height: 48,
+            opacity: phase === "idle" ? 0 : 1,
+            transform: `translateY(${Math.max(0, pullPx - 48)}px)`,
+          }}
+          aria-hidden={phase === "idle"}
+          data-testid="pull-indicator"
+        >
+          {phase === "refreshing" ? (
+            <span className="flex items-center gap-1.5">
+              <svg viewBox="0 0 20 20" className="size-3.5 animate-spin" fill="none" aria-hidden>
+                <circle cx="10" cy="10" r="7.5" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2" />
+                <path d="M17.5 10a7.5 7.5 0 0 0-7.5-7.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+              刷新中…
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5">
+              <svg
+                viewBox="0 0 20 20"
+                className={`size-3.5 transition-transform ${phase === "ready" ? "rotate-180" : ""}`}
+                fill="none"
+                aria-hidden
+              >
+                <path d="M10 3.5v11M5.5 10L10 14.5 14.5 10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              {phase === "ready" ? "松手刷新" : "下拉刷新"}
+            </span>
+          )}
+        </div>
+        <ul
+          ref={listRef}
+          className="h-full space-y-0.5 overflow-y-auto overscroll-contain px-3 pb-8"
+          data-testid="task-list"
+          style={{
+            transform: `translateY(${pullPx}px)`,
+            transition: phase === "pulling" || phase === "ready" ? "none" : "transform 0.2s ease-out",
+          }}
+        >
+          {tree.map(({ task, children }) => {
+            const childNodes = collapsed.has(task.id) ? [] : children;
+            return (
+              <li key={task.id} className="space-y-0.5">
+                <TaskRow
+                  task={task}
+                  showProject={view.kind !== "project"}
+                  projects={projects}
+                  progress={subtaskProgress(tasks, task.id)}
+                  collapsed={children.length > 0 ? collapsed.has(task.id) : undefined}
+                  onToggleCollapse={children.length > 0 ? () => toggleCollapse(task.id) : undefined}
+                />
+                {childNodes.map((child) => (
+                  <TaskRow
+                    key={child.id}
+                    task={child}
+                    showProject={view.kind !== "project"}
+                    projects={projects}
+                    isSubtask
+                  />
+                ))}
+              </li>
+            );
+          })}
+          {rowCount === 0 && (
+            <li className="pt-16 text-center text-sm text-zinc-400" data-testid="empty-state">
+              {search ? "没有匹配的任务" : isTrash ? "回收站是空的" : "这里空空如也，添加一个任务吧"}
+            </li>
+          )}
+        </ul>
+      </div>
+      <SyncStatusSheet />
     </>
   );
 }
@@ -134,13 +218,14 @@ export function SyncBadge() {
   };
   const s = map[status]!;
   return (
-    <span
-      className="flex items-center gap-1.5 text-xs text-zinc-400"
+    <button
+      className="flex cursor-pointer items-center gap-1.5 rounded-lg px-1 py-0.5 text-xs text-zinc-400 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
       data-testid="sync-badge"
-      title={`同步状态：${s.text}`}
+      title={`同步状态：${s.text}（点击查看详情）`}
+      onClick={() => void actions.openSyncSheet()}
     >
       <span className={`size-1.5 rounded-full ${s.cls}`} />
       {s.text}
-    </span>
+    </button>
   );
 }

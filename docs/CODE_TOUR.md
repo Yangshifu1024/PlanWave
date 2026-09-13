@@ -39,29 +39,29 @@ v2 的关键决定：**客户端数据层只有一种实现**——同步语义�
 | `src/merge.rs` | **合并规则**：把 patch 应用到记录。三条铁律——缺席字段不动；实体不存在视为创建（默认值落底）；对墓碑（已删除）的其他字段编辑不会复活它 |
 | `src/replay.rs` | **重放引擎**：按服务端 seq 顺序重放 op 集合，`op_id` 去重保证幂等。这是「所有端必然收敛」的正确性模型 |
 | `src/clock.rs` | Lamport 逻辑时钟：客户端本地 op 的时钟只增不减 |
-| `src/client.rs` | **客户端同步状态机**（纯逻辑，存储与传输是 trait）：`mutate()` 本地立即生效+入队、`flush()` 分批推送+幂等出队、`pull_all()` 分页追平（单飞+尾随合并）、`refresh()` = flush+pull |
-| `tests/` | 随机化收敛性测试（任意全序 → 同一状态）、与服务端 JSON 的契约测试、客户端状态机 6 场景（双端收敛/断网恢复/幂等/Lamport 推进/单飞重入/分页） |
+| `src/client.rs` | **客户端同步状态机**（纯逻辑，存储与传输是 trait）：`mutate()` 本地立即生效+入队、`flush()` 分批推送+幂等出队、`pull_all()` 分页追平（单飞+尾随合并）、`refresh()` = flush+pull、`start()` 新设备快照引导（失败回退全量回放） |
+| `tests/` | 随机化收敛性测试（任意全序 → 同一状态）、与服务端 JSON 的契约测试、客户端状态机 9 场景（双端收敛/断网恢复/幂等/Lamport 推进/分页/快照引导/回退/离线写保留） |
 
 ### `crates/sync-wasm/` —— 唯一的数据层实现（Rust→WASM）
 
 | 文件 | 职责 |
 |---|---|
-| `src/lib.rs` | `PlanWaveClient`（wasm-bindgen 入口）：new/mutate/refresh/list_*/register/login/logout；JSON 字符串过 JS/Rust 边界 |
-| `src/idb_storage.rs` | `ClientStorage` trait 的 IndexedDB 实现（idb crate）：projects/tasks/seen_ops 去重/pending_ops 自增队列/meta |
-| `src/transport.rs` | `SyncTransport` trait 的 HTTP 实现（gloo-net）：push/pull + 注册/登录/刷新，token 存 localStorage，401 自动刷新后重试 |
+| `src/lib.rs` | `PlanWaveClient`（wasm-bindgen 入口）：new/mutate/refresh/flush/start/sync_details/list_*/register/login/logout；JSON 字符串过 JS/Rust 边界；refresh/flush/start 的结果落到 SyncMeta（最近同步时间/错误/push/pull 条数） |
+| `src/idb_storage.rs` | `ClientStorage` trait 的 IndexedDB 实现（idb crate）：projects/tasks/seen_ops 去重/pending_ops 自增队列/meta/recent_ops 最近 op 环形日志（100 条，同步详情页数据源）。拉取按**每页一个事务**批量应用；`reset_with_snapshot` 快照引导后重放 pending，本地未同步编辑不丢 |
+| `src/transport.rs` | `SyncTransport` trait 的 HTTP 实现（gloo-net）：push/pull/snapshot + 注册/登录/刷新，token 存 localStorage，401 自动刷新后重试 |
 
 ### `apps/server/` —— Axum 后端
 
 | 文件 | 职责 |
 |---|---|
-| `src/api/mod.rs` | 路由表：`/auth/*`、`/sync/push|pull`、`/health` |
-| `src/api/sync_api.rs` | 同步端点：push（批量原子、校验、定序）、pull（按 seq 增量分页）。无推送通道——客户端拉取制 |
+| `src/api/mod.rs` | 路由表：`/auth/*`、`/sync/push|pull|snapshot`、`/health`；gzip 压缩层（pull/snapshot 响应） |
+| `src/api/sync_api.rs` | 同步端点：push（批量原子、校验、定序）、pull（按 seq 增量分页）、snapshot（权威投影+seq，新设备引导）。无推送通道——客户端拉取制 |
 | `src/api/auth_api.rs` | 单账号注册/登录/刷新（首个注册的账号即永久账号） |
 | `src/auth.rs` | JWT 签发/校验（access 15min + refresh 轮换）+ argon2id 密码 |
-| `src/store/mod.rs` | **存储层接口（trait）**：`push/pull/账号/设备` |
+| `src/store/mod.rs` | **存储层接口（trait）**：`push/pull/snapshot/账号/设备` |
 | `src/store/memory.rs` | 内存实现：本地开发、集成测试、E2E 全靠它（无数据库也能跑通全流程） |
 | `src/store/mysql.rs` | MySQL 实现：单事务内「写 oplog + 更新权威投影表」，语义与 sync-core 逐字段一致 |
-| `migrations/0001_init.sql` | 建表：`ops`（oplog，seq 自增主键）、`projects/tasks`（投影）、`account/devices` |
+| `migrations/` | `0001_init.sql` 建表：`ops`（oplog，seq 自增主键）、`projects/tasks`（投影）、`account/devices`；`0002_subtask_recurrence.sql` 加 `parent_id`/`recurrence` 列 |
 
 ### `apps/web/` —— 界面（React，六端同一份构建产物）
 
@@ -69,9 +69,12 @@ v2 的关键决定：**客户端数据层只有一种实现**——同步语义�
 |---|---|
 | `src/wasm/client.ts` | WASM 装载器 + 类型化包装（JSON 字符串 ↔ 对象）；调试句柄 `__planwave` |
 | `src/state/store.ts` | Zustand 全局状态 + 所有领域动作（addTask/toggleTask…），全部转调 WASM 客户端 `mutate`；**1.5s 防抖自动推送**、60s 前台轮询、聚焦/online 事件桥、reload 世代号（防并发旧读覆盖新写） |
-| `src/components/` | AuthScreen（登录）、Sidebar（侧栏）、TaskList（列表+搜索+刷新按钮+同步徽章）、TaskRow（单行）、TaskDetail（详情面板），全部 HeroUI v3 |
+| `src/components/` | AuthScreen（登录）、Sidebar（侧栏）、TaskList（列表+搜索+刷新按钮+同步徽章+下拉刷新）、TaskRow（单行，子任务缩进/进度/折叠）、TaskDetail（详情面板+子任务管理+重复规则编辑器）、SyncStatusSheet（同步状态详情页：pending 队列/最近 op/错误），全部 HeroUI v3 |
 | `src/lib/platform.ts` | API 地址解析：`VITE_API_BASE` 显式配置 → dev/preview 端口（5173/4173→8787）启发式 → 生产同源 `/api` |
-| `src/lib/filters.ts` | 今天/最近7天/全部/回收站 的筛选排序（纯函数） |
+| `src/lib/filters.ts` | 今天/最近7天/全部/回收站 的筛选排序 + `visibleTree` 子任务树（父不可见时子任务提升为顶层行，纯函数） |
+| `src/lib/recurrence.ts` | 重复任务到期滚动（本地时区保时刻、月/年末日收敛、周几组合）+ 规则中文摘要 |
+| `src/lib/opSummary.ts` | op patch → 中文动作摘要（同步详情页展示） |
+| `src/lib/usePullToRefresh.ts` | 移动端下拉刷新手势 hook（原生非 passive touch 监听 + 阻尼 + 阈值触发） |
 | `src/lib/reminders.ts` | 到期本地通知调度（Tauri 通知插件 / Web Notification API） |
 | `e2e/sync.spec.ts` | Playwright 端到端：真实服务端 + 双浏览器手动刷新同步 + 离线恢复 |
 
@@ -131,7 +134,10 @@ v2 的关键决定：**客户端数据层只有一种实现**——同步语义�
 
 | 想改什么 | 去哪里 | 注意 |
 |---|---|---|
-| 给任务加字段（如重复规则） | `sync-core/model.rs` 的 TaskPatch + merge 一处 + `apps/server/migrations` + 两个 store 实现 | **只改 Rust 一份**；JSON 契约测试锁定与服务端的字段一致性 |
+| 给任务加字段 | `sync-core/model.rs` 的 TaskPatch + merge 一处 + `apps/server/migrations` + 两个 store 实现 | **只改 Rust 一份**；JSON 契约测试锁定与服务端的字段一致性；三态字段（可清空）记得挂 `deserialize_set_field` |
+| 改重复任务规则/滚动算法 | `sync-core/model.rs` 的 RecurrenceRule（数据）+ `apps/web/src/lib/recurrence.ts`（算法）+ `store.ts` 的 `materializeNextOccurrence`（物化行为） | 到期计算在各端 TS 侧（本地时区），Rust 只存结构 |
+| 改子任务展示/嵌套规则 | `apps/web/src/lib/filters.ts` 的 `visibleTree` + TaskList/TaskDetail | 纯函数有单测；当前为单层嵌套 |
+| 改同步详情页内容 | `crates/sync-wasm` 的 `sync_details`（数据面）+ `apps/web/src/components/SyncStatusSheet.tsx` | 最近 op 记录在 idb `recent_ops` 环形日志 |
 | 改界面/交互 | `apps/web/src/components/` | 纯 UI（HeroUI v3），不碰同步 |
 | 改视图逻辑（今天/最近7天…） | `apps/web/src/lib/filters.ts` | 纯函数，有单测 |
 | 加服务端 API | `apps/server/src/api/` | 记得在 `api/mod.rs` 注册路由 |

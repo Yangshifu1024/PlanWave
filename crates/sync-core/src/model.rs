@@ -55,6 +55,52 @@ mod set_serde {
     }
 }
 
+/// `Option<Set<T>>` 字段的反序列化：显式 JSON `null` → `Some(Set::Clear)`（清空），
+/// 字段缺席 → `None`（不动）。
+///
+/// serde 内建的 `Option` 会把 `null` 直接变成 `None`，`Set` 的自定义反序列化
+/// 根本不会执行——「null = 清空」契约会静默失效（曾导致清空截止日期不生效），
+/// 因此带三态语义的字段必须挂这个函数。
+pub(crate) fn deserialize_set_field<'de, D, T>(deserializer: D) -> Result<Option<Set<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::Deserialize<'de>,
+{
+    let v: Option<serde_json::Value> = serde::Deserialize::deserialize(deserializer)?;
+    match v {
+        None => Ok(Some(Set::Clear)),
+        Some(val) => T::deserialize(val)
+            .map(|x| Some(Set::Value(x)))
+            .map_err(serde::de::Error::custom),
+    }
+}
+
+/// 重复频率。到期滚动算法在各端实现（本结构只承载数据）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RecurrenceFreq {
+    Daily,
+    Weekly,
+    Monthly,
+    Yearly,
+}
+
+/// 重复规则。完成带规则的任务时，客户端物化下一次到期的新实例。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecurrenceRule {
+    pub freq: RecurrenceFreq,
+    /// 间隔：每 N 天/周/月/年，最小 1。
+    #[serde(default = "default_interval")]
+    pub interval: u32,
+    /// weekly 专用：每周哪几天（0=周日…6=周六）；空 = 跟随上次到期日的星期。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub weekdays: Vec<u8>,
+}
+
+fn default_interval() -> u32 {
+    1
+}
+
 /// 项目（清单）字段 patch。字段缺省 = 不动；`deleted` 即墓碑。
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ProjectPatch {
@@ -78,7 +124,11 @@ pub struct TaskPatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
     /// 截止时间（UTC 毫秒时间戳）。None=不动，Clear=清空，Value=设置。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_set_field",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub due_date: Option<Set<i64>>,
     /// 0=无 1=低 2=中 3=高
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -91,6 +141,20 @@ pub struct TaskPatch {
     pub sort_order: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deleted: Option<bool>,
+    /// 重复规则。None=不动，Clear=清除，Value=设置。
+    #[serde(
+        default,
+        deserialize_with = "deserialize_set_field",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub recurrence: Option<Set<RecurrenceRule>>,
+    /// 父任务 id（子任务=带 parent_id 的普通任务，单层）。None=不动，Clear=顶层，Value=设置。
+    #[serde(
+        default,
+        deserialize_with = "deserialize_set_field",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub parent_id: Option<Set<Id>>,
 }
 
 /// op 携带的变更体：由实体类型决定。
@@ -176,6 +240,18 @@ pub struct SyncMeta {
     pub lamport: u64,
     #[serde(default)]
     pub last_pulled_seq: u64,
+    /// 最近一次成功同步的时间（UTC 毫秒）。仅观测用途（同步详情页展示）。
+    #[serde(default)]
+    pub last_sync_at: Option<i64>,
+    /// 最近一次同步失败的错误文案；成功后清空。
+    #[serde(default)]
+    pub last_error: Option<String>,
+    /// 最近一次成功推送的 op 条数。仅观测用途。
+    #[serde(default)]
+    pub last_pushed: Option<u64>,
+    /// 最近一次成功拉取应用的 op 条数。仅观测用途。
+    #[serde(default)]
+    pub last_pulled: Option<u64>,
 }
 
 /// 服务端权威投影记录（与客户端本地记录字段一致）。
@@ -200,6 +276,21 @@ pub struct TaskRecord {
     pub labels: Vec<String>,
     pub sort_order: f64,
     pub deleted: bool,
+    /// 父任务 id；空串 = 顶层任务。
+    #[serde(default)]
+    pub parent_id: Id,
+    /// 重复规则；None = 不重复。
+    #[serde(default)]
+    pub recurrence: Option<RecurrenceRule>,
+}
+
+/// 服务端权威投影快照：新设备引导用（替代全量 oplog 回放）。
+/// 必须包含墓碑记录，保证与「从 seq=0 重放」语义一致。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Snapshot {
+    pub seq: u64,
+    pub projects: Vec<ProjectRecord>,
+    pub tasks: Vec<TaskRecord>,
 }
 
 #[derive(Debug, thiserror::Error, PartialEq)]

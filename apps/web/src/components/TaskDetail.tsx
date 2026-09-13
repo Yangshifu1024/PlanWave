@@ -1,9 +1,10 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Button, Input, ListBox, ListBoxItem, Select, Switch, TextArea } from "@heroui/react";
-import type { TaskRecord } from "../types";
+import { Button, Checkbox, Input, ListBox, ListBoxItem, Select, Switch, TextArea } from "@heroui/react";
+import type { RecurrenceFreq, RecurrenceRule, TaskRecord } from "../types";
 import { actions, useApp } from "../state/store";
 import { isDesktopApp } from "../lib/platform";
 import { fromDateInput, toDateInput } from "../lib/dates";
+import { recurrenceLabel } from "../lib/recurrence";
 
 const PRIORITIES: { value: number; label: string }[] = [
   { value: 0, label: "无" },
@@ -12,6 +13,36 @@ const PRIORITIES: { value: number; label: string }[] = [
   { value: 3, label: "高" },
 ];
 
+const RECURRENCE_PRESETS: { value: string; label: string }[] = [
+  { value: "none", label: "不重复" },
+  { value: "daily", label: "每天" },
+  { value: "weekly", label: "每周" },
+  { value: "monthly", label: "每月" },
+  { value: "yearly", label: "每年" },
+  { value: "custom", label: "自定义…" },
+];
+
+const WEEKDAY_SHORT = ["日", "一", "二", "三", "四", "五", "六"];
+const FREQ_OPTIONS: { value: RecurrenceFreq; label: string }[] = [
+  { value: "daily", label: "天" },
+  { value: "weekly", label: "周" },
+  { value: "monthly", label: "月" },
+  { value: "yearly", label: "年" },
+];
+
+/** 由规则推导选择器档位：interval=1 且周规则未选星期几 → 预设档，否则自定义。 */
+function recurrencePreset(r: RecurrenceRule | null): string {
+  if (!r) return "none";
+  if (r.interval === 1 && !(r.freq === "weekly" && (r.weekdays?.length ?? 0) > 0)) return r.freq;
+  return "custom";
+}
+
+function applyPreset(r: RecurrenceRule | null, preset: string): RecurrenceRule | null {
+  if (preset === "none") return null;
+  if (preset === "custom") return r ?? { freq: "daily", interval: 2, weekdays: [] };
+  return { freq: preset as RecurrenceFreq, interval: 1, weekdays: [] };
+}
+
 interface Draft {
   title: string;
   notes: string;
@@ -19,6 +50,7 @@ interface Draft {
   priority: number;
   project_id: string;
   due: string; // yyyy-MM-dd，空串 = 未设置
+  recurrence: RecurrenceRule | null;
 }
 
 function draftFrom(task: TaskRecord): Draft {
@@ -29,6 +61,7 @@ function draftFrom(task: TaskRecord): Draft {
     priority: task.priority,
     project_id: task.project_id,
     due: toDateInput(task.due_date),
+    recurrence: task.recurrence,
   };
 }
 
@@ -47,6 +80,10 @@ function diffPatch(task: TaskRecord, d: Draft): Record<string, unknown> | null {
   if (d.project_id !== task.project_id) patch.project_id = d.project_id;
   const due = fromDateInput(d.due);
   if (due !== task.due_date) patch.due_date = due;
+  if (JSON.stringify(d.recurrence) !== JSON.stringify(task.recurrence)) {
+    // null = 清除重复（Set::Clear），对象 = 设置规则
+    patch.recurrence = d.recurrence;
+  }
   return Object.keys(patch).length > 0 ? patch : null;
 }
 
@@ -89,6 +126,11 @@ function DetailBody({
   const [draft, setDraft] = useState<Draft>(() => draftFrom(task));
   const patch = diffPatch(task, draft);
   const dirty = patch !== null;
+  const allTasks = useApp((s) => s.tasks);
+  const [subtaskDraft, setSubtaskDraft] = useState("");
+  // 子任务（单层）：非删除的、以当前任务为父的任务
+  const children = allTasks.filter((c) => c.parent_id === task.id && !c.deleted);
+  const doneCount = children.filter((c) => c.completed).length;
 
   // 远端/同步更新时，若本地没有未保存修改则跟随刷新（正在编辑则不打扰）
   useEffect(() => {
@@ -99,6 +141,15 @@ function DetailBody({
     if (patch === null) return;
     setDraft((d) => ({ ...d, title: d.title.trim() }));
     await actions.patchTask(task.id, patch);
+  };
+
+  const preset = recurrencePreset(draft.recurrence);
+  const rule = draft.recurrence;
+
+  const submitSubtask = () => {
+    if (!subtaskDraft.trim()) return;
+    void actions.addSubtask(task.id, subtaskDraft);
+    setSubtaskDraft("");
   };
 
   return (
@@ -219,6 +270,96 @@ function DetailBody({
         </div>
       </Field>
 
+      <Field label="重复">
+        <select
+          value={preset}
+          onChange={(e) =>
+            setDraft({ ...draft, recurrence: applyPreset(draft.recurrence, e.target.value) })
+          }
+          data-testid="detail-recurrence"
+          aria-label="重复规则"
+          className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 [color-scheme:light] dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 dark:[color-scheme:dark]"
+        >
+          {RECURRENCE_PRESETS.map((p) => (
+            <option key={p.value} value={p.value}>
+              {p.value === "custom" && rule ? `自定义（${recurrenceLabel(rule)}）` : p.label}
+            </option>
+          ))}
+        </select>
+        {preset === "custom" && rule && (
+          <div className="flex flex-wrap items-center gap-2 rounded-xl bg-zinc-50 p-3 dark:bg-zinc-800/60">
+            <span className="text-xs text-zinc-400">每</span>
+            <input
+              type="number"
+              min={1}
+              value={rule.interval}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  recurrence: rule && {
+                    ...rule,
+                    interval: Math.max(1, Number(e.target.value) || 1),
+                  },
+                })
+              }
+              data-testid="detail-recurrence-interval"
+              aria-label="重复间隔"
+              className="w-16 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-sm [color-scheme:light] dark:border-zinc-700 dark:bg-zinc-800 dark:[color-scheme:dark]"
+            />
+            <select
+              value={rule.freq}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  recurrence: { ...rule, freq: e.target.value as RecurrenceFreq },
+                })
+              }
+              aria-label="重复单位"
+              className="rounded-lg border border-zinc-200 bg-white px-2 py-1 text-sm [color-scheme:light] dark:border-zinc-700 dark:bg-zinc-800 dark:[color-scheme:dark]"
+            >
+              {FREQ_OPTIONS.map((f) => (
+                <option key={f.value} value={f.value}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+            {rule.freq === "weekly" && (
+              <span className="flex gap-1">
+                {WEEKDAY_SHORT.map((label, idx) => {
+                  const active = (rule.weekdays ?? []).includes(idx);
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      className={`size-7 rounded-full text-xs transition ${
+                        active
+                          ? "bg-blue-500 text-white"
+                          : "bg-zinc-200 text-zinc-500 hover:bg-zinc-300 dark:bg-zinc-700 dark:text-zinc-300"
+                      }`}
+                      aria-pressed={active}
+                      aria-label={`每周${label}`}
+                      onClick={() =>
+                        setDraft({
+                          ...draft,
+                          recurrence: {
+                            ...rule,
+                            weekdays: active
+                              ? (rule.weekdays ?? []).filter((w) => w !== idx)
+                              : [...(rule.weekdays ?? []), idx].sort((a, b) => a - b),
+                          },
+                        })
+                      }
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </span>
+            )}
+          </div>
+        )}
+      </Field>
+
       <Field label="所属项目">
         <Select
           selectedKey={draft.project_id || null}
@@ -254,6 +395,75 @@ function DetailBody({
           data-testid="detail-labels"
         />
       </Field>
+
+      {!task.deleted && (
+        <Field label={`子任务（${doneCount}/${children.length}）`}>
+          <ul className="space-y-0.5" data-testid="detail-subtasks">
+            {children.map((c) => (
+              <li
+                key={c.id}
+                className="group/sub flex items-center gap-2 rounded-lg px-1 py-1 hover:bg-zinc-50 dark:hover:bg-zinc-800/60"
+              >
+                <span onClick={(e) => e.stopPropagation()}>
+                  <Checkbox
+                    isSelected={c.completed}
+                    onChange={() => void actions.toggleTask(c.id)}
+                    data-testid={`subtask-check-${c.title}`}
+                    aria-label={c.completed ? "标记子任务未完成" : "完成子任务"}
+                  >
+                    <Checkbox.Content>
+                      <Checkbox.Control>
+                        <Checkbox.Indicator />
+                      </Checkbox.Control>
+                    </Checkbox.Content>
+                  </Checkbox>
+                </span>
+                <button
+                  className={`min-w-0 flex-1 cursor-pointer truncate text-left text-sm ${
+                    c.completed ? "text-zinc-400 line-through" : ""
+                  }`}
+                  onClick={() => actions.selectTask(c.id)}
+                  data-testid={`subtask-open-${c.title}`}
+                >
+                  {c.title}
+                </button>
+                <Button
+                  isIconOnly
+                  variant="ghost"
+                  onPress={() => void actions.deleteTask(c.id)}
+                  aria-label="删除子任务"
+                  className="shrink-0 text-zinc-400 opacity-0 transition hover:text-red-500 group-hover/sub:opacity-100"
+                >
+                  <svg viewBox="0 0 16 16" className="size-4" fill="none" aria-hidden>
+                    <path
+                      d="M3 4.5h10M6.5 4.5V3.8c0-.4.3-.8.8-.8h1.4c.5 0 .8.4.8.8v.7M5 4.5l.5 8c0 .6.5 1 1 1h3c.5 0 1-.4 1-1l.5-8"
+                      stroke="currentColor"
+                      strokeWidth="1.2"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </Button>
+              </li>
+            ))}
+          </ul>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              submitSubtask();
+            }}
+            className="flex gap-2"
+          >
+            <Input
+              value={subtaskDraft}
+              onChange={(e) => setSubtaskDraft(e.target.value)}
+              placeholder="添加子任务，回车确认"
+              fullWidth
+              data-testid="detail-subtask-input"
+              aria-label="添加子任务"
+            />
+          </form>
+        </Field>
+      )}
 
       <Field label="备注">
         <TextArea

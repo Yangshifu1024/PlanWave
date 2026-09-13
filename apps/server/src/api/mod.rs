@@ -7,6 +7,7 @@ pub mod sync_api;
 use crate::AppState;
 use axum::routing::{get, post};
 use axum::Router;
+use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
@@ -21,6 +22,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/auth/refresh", post(auth_api::refresh))
         .route("/sync/push", post(sync_api::push))
         .route("/sync/pull", get(sync_api::pull))
+        .route("/sync/snapshot", get(sync_api::snapshot))
+        .layer(CompressionLayer::new())
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())
         .with_state(state)

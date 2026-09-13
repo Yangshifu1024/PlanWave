@@ -66,6 +66,69 @@ export function countTasks(tasks: TaskRecord[], view: ViewKind, now = new Date()
   return filterTasks(tasks, view, "", now).filter((t) => !t.completed).length;
 }
 
+/** 任务树节点：父任务 + 归入其下的可见子任务。 */
+export interface TaskTree {
+  task: TaskRecord;
+  children: TaskRecord[];
+}
+
+/**
+ * 视图可见的任务树（子任务单层嵌套）：
+ * - 回收站：平铺（与历史行为一致）；
+ * - 父任务在当前视图可见 → 命中的子任务缩进挂在父下；
+ * - 父任务不在视图（不匹配筛选/搜索）或父已删/缺失 → 命中的子任务提升为顶层行。
+ */
+export function visibleTree(
+  tasks: TaskRecord[],
+  view: ViewKind,
+  search: string,
+  now = new Date(),
+): TaskTree[] {
+  const flat = filterTasks(tasks, view, search, now);
+  if (view.kind === "smart" && view.smart === "trash") {
+    return flat.map((task) => ({ task, children: [] }));
+  }
+  const visible = new Map(flat.map((t) => [t.id, t]));
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+
+  const childrenOf = new Map<string, TaskRecord[]>();
+  const promoted: TaskRecord[] = [];
+  const topLevels: TaskRecord[] = [];
+  for (const t of flat) {
+    if (!t.parent_id) {
+      topLevels.push(t);
+      continue;
+    }
+    const parent = byId.get(t.parent_id);
+    if (!parent || parent.deleted) {
+      // 孤儿子任务（父不存在或已删）：按顶层渲染
+      topLevels.push(t);
+    } else if (visible.has(parent.id)) {
+      const list = childrenOf.get(parent.id) ?? [];
+      if (list.length === 0) childrenOf.set(parent.id, list);
+      list.push(t);
+    } else {
+      promoted.push(t);
+    }
+  }
+  return sortTasks([...topLevels, ...promoted]).map((task) => ({
+    task,
+    children: sortTasks(childrenOf.get(task.id) ?? []),
+  }));
+}
+
+/** 子任务进度（父任务行角标）：全部含已删之外的子任务。 */
+export function subtaskProgress(tasks: TaskRecord[], parentId: string): { done: number; total: number } {
+  let done = 0;
+  let total = 0;
+  for (const t of tasks) {
+    if (t.parent_id !== parentId || t.deleted) continue;
+    total += 1;
+    if (t.completed) done += 1;
+  }
+  return { done, total };
+}
+
 export function projectNameOf(
   projects: ProjectRecord[],
   id: string,
