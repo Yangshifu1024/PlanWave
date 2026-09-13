@@ -1,12 +1,21 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Button, Checkbox, Input, ListBox, ListBoxItem, Select, Switch, TextArea } from "@heroui/react";
+import {
+  Button,
+  Checkbox,
+  Input,
+  ListBox,
+  ListBoxItem,
+  Select,
+  Switch,
+  TextArea,
+} from "@heroui/react";
 import type { RecurrenceFreq, RecurrenceRule, TaskRecord } from "../types";
 import { actions, useApp } from "../state/store";
 import { isDesktopApp } from "../lib/platform";
 import { fromDateInput, toDateInput } from "../lib/dates";
 import { recurrenceLabel } from "../lib/recurrence";
 
-const PRIORITIES: { value: number; label: string }[] = [
+export const PRIORITIES: { value: number; label: string }[] = [
   { value: 0, label: "无" },
   { value: 1, label: "低" },
   { value: 2, label: "中" },
@@ -112,7 +121,6 @@ export function TaskDetail() {
     </div>
   );
 }
-
 
 function DetailBody({
   task,
@@ -363,9 +371,7 @@ function DetailBody({
       <Field label="所属项目">
         <Select
           selectedKey={draft.project_id || null}
-          onSelectionChange={(key) =>
-            setDraft({ ...draft, project_id: (key as string) ?? "" })
-          }
+          onSelectionChange={(key) => setDraft({ ...draft, project_id: (key as string) ?? "" })}
           data-testid="detail-project"
           aria-label="所属项目"
           fullWidth
@@ -479,7 +485,7 @@ function DetailBody({
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="space-y-1.5">
       <div className="text-xs font-medium text-zinc-400">{label}</div>

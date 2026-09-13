@@ -16,6 +16,18 @@ export type ViewKind =
 
 export type Theme = "system" | "light" | "dark";
 
+/** 新建任务输入：缺省字段走创建默认值（sync-core 的 task_defaults）。 */
+export interface NewTaskInput {
+  title: string;
+  /** 不传 = 跟随当前视图（项目视图归项目，其余进收集箱）；空串 = 显式收集箱。 */
+  projectId?: string;
+  priority?: number;
+  /** UTC 毫秒时间戳；不传或 null = 未设置。 */
+  dueDate?: number | null;
+  notes?: string;
+  labels?: string[];
+}
+
 interface AppState {
   phase: "boot" | "auth" | "ready";
   hasAccount: boolean;
@@ -200,10 +212,7 @@ export const actions = {
     // 旧读作废——否则旧数据会覆盖新写，UI 出现「已删除的任务又出现」这类回退。
     const gen = ++reloadGen;
     const client = await ensureTypedClient();
-    const [tasks, projects] = await Promise.all([
-      client.listTasks(),
-      client.listProjects(),
-    ]);
+    const [tasks, projects] = await Promise.all([client.listTasks(), client.listProjects()]);
     if (gen !== reloadGen) return;
     useApp.getState().setPartial({ tasks, projects });
     rescheduleReminders(tasks);
@@ -301,19 +310,25 @@ export const actions = {
     await afterMutate();
   },
 
-  async addTask(title: string, projectId?: string, priority: number = 0): Promise<void> {
-    if (!title.trim()) return;
+  /** 新建任务（不存在即创建，upsert 语义）；未提供的字段由 sync-core 落创建默认值。 */
+  async addTask(input: NewTaskInput): Promise<void> {
+    const title = input.title.trim();
+    if (!title) return;
     const s = useApp.getState();
-    const project_id = projectId ?? (s.view.kind === "project" ? s.view.id : "");
+    const project_id = input.projectId ?? (s.view.kind === "project" ? s.view.id : "");
+    const { priority = 0, notes = "", labels = [], dueDate = null } = input;
     const client = await ensureTypedClient();
     await client.mutate(
       "task",
       crypto.randomUUID(),
       JSON.stringify({
-        title: title.trim(),
+        title,
         sort_order: Date.now(),
         ...(project_id ? { project_id } : {}),
         ...(priority ? { priority } : {}),
+        ...(notes ? { notes } : {}),
+        ...(labels.length ? { labels } : {}),
+        ...(dueDate !== null ? { due_date: dueDate } : {}),
       }),
     );
     await afterMutate();
