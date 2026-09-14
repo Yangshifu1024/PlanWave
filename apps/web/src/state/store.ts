@@ -4,6 +4,7 @@
 //! store 只负责把本地库的最新状态搬进 React。
 
 import { create } from "zustand";
+import { toast } from "@heroui/react";
 import type { ProjectRecord, SyncDetails, TaskRecord } from "../types";
 import { isTauri, applyServerAddress, getApiBase } from "../lib/platform";
 import { ensureTypedClient, hasTokens, type WasmClientApi } from "../wasm/client";
@@ -407,6 +408,27 @@ export const actions = {
       await materializeNextOccurrence(client, t);
     }
     await afterMutate();
+  },
+
+  /** 列表页勾选：即时完成/取消 + 带「撤销」的 Toast（撤销再次切换回原状态）。 */
+  async toggleTaskWithUndo(id: string): Promise<void> {
+    const t = useApp.getState().tasks.find((x) => x.id === id);
+    if (!t) return;
+    const wasCompleted = t.completed;
+    await actions.toggleTask(id);
+    const label = wasCompleted ? `已取消完成「${t.title}」` : `已完成「${t.title}」`;
+    // 重复任务完成时会物化下一次实例，回滚无法安全撤销该副作用，故不提供「撤销」。
+    if (t.recurrence) {
+      toast(label, { timeout: 5_000 });
+      return;
+    }
+    toast(label, {
+      timeout: 5_000,
+      actionProps: {
+        children: "撤销",
+        onPress: () => void actions.toggleTask(id),
+      },
+    });
   },
 
   async patchTask(id: string, patch: Record<string, unknown>): Promise<void> {

@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { Fragment, useEffect, useMemo, useState, type FormEvent } from "react";
 import { Button, Checkbox, Input } from "@heroui/react";
 import { actions, useApp, type ViewKind } from "../state/store";
-import { subtaskProgress, visibleTree } from "../lib/filters";
+import { groupByDue, splitCompleted, subtaskProgress, visibleTree, type TaskTree } from "../lib/filters";
 import { usePullToRefresh } from "../lib/usePullToRefresh";
 import { isDesktopApp } from "../lib/platform";
 import { TaskRow } from "./TaskRow";
 import { QuickAddModal } from "./QuickAddModal";
 import { SyncStatusSheet } from "./SyncStatusSheet";
+
+/** 「已完成」分区展开偏好的 localStorage key。 */
+const SHOW_COMPLETED_KEY = "planwave.ui.showCompleted";
 
 function viewTitle(view: ViewKind): string {
   switch (view.kind) {
@@ -32,11 +35,28 @@ export function TaskList() {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   // 回收站多选：勾选的墓碑任务 id（列表本地状态）
   const [trashSelected, setTrashSelected] = useState<Set<string>>(() => new Set());
+  // 「已完成」分区展开状态（偏好持久化；默认折叠）
+  const [showCompleted, setShowCompleted] = useState(
+    () => localStorage.getItem(SHOW_COMPLETED_KEY) === "true",
+  );
 
   const tree = useMemo(() => visibleTree(tasks, view, search), [tasks, view, search]);
   const isTrash = view.kind === "smart" && view.smart === "trash";
+  const searching = search.trim().length > 0;
+  const showGroups = !isTrash && !searching;
+  const { active, completed } = useMemo(() => splitCompleted(tree), [tree]);
+  const groups = useMemo(() => (showGroups ? groupByDue(active) : []), [active, showGroups]);
   const { ref: listRef, pullPx, phase } = usePullToRefresh(() => actions.refresh());
   const rowCount = tree.reduce((n, node) => n + 1 + node.children.length, 0);
+  const visibleCount = searching ? tree.length : active.length + completed.length;
+
+  const toggleCompleted = () => {
+    setShowCompleted((prev) => {
+      const next = !prev;
+      localStorage.setItem(SHOW_COMPLETED_KEY, String(next));
+      return next;
+    });
+  };
 
   // 任务集合变化（彻底删除/恢复）后清理失效勾选项：
   // 恢复会让墓碑变回活任务，必须同步移出勾选集，避免误删活任务
@@ -73,6 +93,65 @@ export function TaskList() {
       }
       return next;
     });
+  };
+
+  /** 渲染一个顶层任务节点：行 + （展开时的）子任务树（连续竖向引导线）。 */
+  const renderNode = ({ task, children }: TaskTree) => {
+    const childNodes = collapsed.has(task.id) ? [] : children;
+    return (
+      <li key={task.id} className="relative">
+        <TaskRow
+          task={task}
+          showProject={view.kind !== "project"}
+          projects={projects}
+          progress={subtaskProgress(tasks, task.id)}
+          collapsed={children.length > 0 ? collapsed.has(task.id) : undefined}
+          onToggleCollapse={children.length > 0 ? () => toggleCollapse(task.id) : undefined}
+          showDivider={!isTrash && !task.deleted}
+          trashSelected={trashSelected.has(task.id)}
+          onToggleTrashSelect={
+            isTrash
+              ? () =>
+                  setTrashSelected((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(task.id)) {
+                      next.delete(task.id);
+                    } else {
+                      next.add(task.id);
+                    }
+                    return next;
+                  })
+              : undefined
+          }
+        />
+        {childNodes.length > 0 && (
+          <div className="relative">
+            {/* 连续竖向引导线：贯穿整段子任务 */}
+            <span
+              className="pointer-events-none absolute bottom-1 left-6 top-1 w-px bg-zinc-200 dark:bg-zinc-700"
+              aria-hidden
+            />
+            <ul className="space-y-0.5">
+              {childNodes.map((child) => (
+                <li key={child.id} className="relative">
+                  {/* 肘线：由引导线连向子任务 */}
+                  <span
+                    className="pointer-events-none absolute left-6 top-1/2 h-px w-2.5 bg-zinc-200 dark:bg-zinc-700"
+                    aria-hidden
+                  />
+                  <TaskRow
+                    task={child}
+                    showProject={view.kind !== "project"}
+                    projects={projects}
+                    isSubtask
+                  />
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </li>
+    );
   };
 
   return (
@@ -264,46 +343,56 @@ export function TaskList() {
               phase === "pulling" || phase === "ready" ? "none" : "transform 0.2s ease-out",
           }}
         >
-          {tree.map(({ task, children }) => {
-            const childNodes = collapsed.has(task.id) ? [] : children;
-            return (
-              <li key={task.id} className="space-y-0.5">
-                <TaskRow
-                  task={task}
-                  showProject={view.kind !== "project"}
-                  projects={projects}
-                  progress={subtaskProgress(tasks, task.id)}
-                  collapsed={children.length > 0 ? collapsed.has(task.id) : undefined}
-                  onToggleCollapse={children.length > 0 ? () => toggleCollapse(task.id) : undefined}
-                  trashSelected={trashSelected.has(task.id)}
-                  onToggleTrashSelect={
-                    isTrash
-                      ? () =>
-                          setTrashSelected((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(task.id)) {
-                              next.delete(task.id);
-                            } else {
-                              next.add(task.id);
-                            }
-                            return next;
-                          })
-                      : undefined
-                  }
-                />
-                {childNodes.map((child) => (
-                  <TaskRow
-                    key={child.id}
-                    task={child}
-                    showProject={view.kind !== "project"}
-                    projects={projects}
-                    isSubtask
-                  />
-                ))}
-              </li>
-            );
-          })}
-          {rowCount === 0 && (
+          {isTrash || searching ? (
+            tree.map(renderNode)
+          ) : (
+            <>
+              {groups.map((group) => (
+                <Fragment key={group.key}>
+                  <li
+                    className="flex items-center gap-2 px-3 pb-1 pt-4 first:pt-1"
+                    data-testid={`group-${group.key}`}
+                  >
+                    <span className="text-xs font-medium text-zinc-400">{group.label}</span>
+                    <span className="text-xs text-zinc-300 dark:text-zinc-600">
+                      {group.nodes.length}
+                    </span>
+                  </li>
+                  {group.nodes.map(renderNode)}
+                </Fragment>
+              ))}
+              {completed.length > 0 && (
+                <>
+                  <li className="mt-4 px-3" data-testid="completed-section">
+                    <button
+                      className="flex w-full items-center gap-1.5 border-t border-zinc-200 pt-3 text-left text-xs font-medium text-zinc-400 transition hover:text-zinc-600 dark:border-zinc-800 dark:hover:text-zinc-200"
+                      onClick={toggleCompleted}
+                      data-testid="completed-toggle"
+                      aria-expanded={showCompleted}
+                    >
+                      <svg
+                        viewBox="0 0 12 12"
+                        className={`size-3 transition-transform ${showCompleted ? "rotate-90" : ""}`}
+                        fill="none"
+                        aria-hidden
+                      >
+                        <path
+                          d="M4 2.5L8 6l-4 3.5"
+                          stroke="currentColor"
+                          strokeWidth="1.4"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      已完成 {completed.length}
+                    </button>
+                  </li>
+                  {showCompleted && completed.map(renderNode)}
+                </>
+              )}
+            </>
+          )}
+          {visibleCount === 0 && (
             <li className="pt-16 text-center text-sm text-zinc-400" data-testid="empty-state">
               {search
                 ? "没有匹配的任务"

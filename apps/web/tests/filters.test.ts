@@ -1,7 +1,17 @@
 //! 视图筛选与排序的纯函数测试。
 
 import { describe, expect, it } from "vitest";
-import { countTasks, filterTasks, sortTasks, subtaskProgress, visibleTree } from "../src/lib/filters";
+import {
+  countTasks,
+  dueBucket,
+  filterTasks,
+  groupByDue,
+  sortTasks,
+  splitCompleted,
+  subtaskProgress,
+  visibleTree,
+  type TaskTree,
+} from "../src/lib/filters";
 import type { TaskRecord } from "../src/types";
 
 const DAY = 86_400_000;
@@ -151,6 +161,68 @@ describe("visibleTree（子任务树）", () => {
       task({ id: "c3", parent_id: "p", deleted: true }),
     ];
     expect(subtaskProgress(tasks, "p")).toEqual({ done: 1, total: 2 });
+  });
+});
+
+describe("dueBucket / groupByDue（时间分组）", () => {
+  const node = (t: TaskRecord): TaskTree => ({ task: t, children: [] });
+
+  it("dueBucket 覆盖全部时间桶", () => {
+    expect(dueBucket(task({ id: "1", due_date: now.getTime() - DAY }), now)).toBe("overdue");
+    expect(dueBucket(task({ id: "2", due_date: now.getTime() }), now)).toBe("today");
+    expect(dueBucket(task({ id: "3", due_date: now.getTime() + DAY }), now)).toBe("tomorrow");
+    expect(dueBucket(task({ id: "4", due_date: now.getTime() + 3 * DAY }), now)).toBe("thisWeek");
+    expect(dueBucket(task({ id: "5", due_date: now.getTime() + 30 * DAY }), now)).toBe("later");
+    expect(dueBucket(task({ id: "6" }), now)).toBe("none");
+  });
+
+  it("groupByDue 省略空桶并按固定顺序输出，桶内保序", () => {
+    const nodes = [
+      node(task({ id: "none", title: "无日期" })),
+      node(task({ id: "late", title: "以后", due_date: now.getTime() + 30 * DAY })),
+      node(task({ id: "over", title: "逾期", due_date: now.getTime() - DAY })),
+      node(task({ id: "today", title: "今天", due_date: now.getTime() })),
+    ];
+    const groups = groupByDue(nodes, now);
+    expect(groups.map((g) => g.key)).toEqual(["overdue", "today", "later", "none"]);
+    expect(groups[0]!.label).toBe("逾期");
+    expect(groups[0]!.nodes.map((n) => n.task.id)).toEqual(["over"]);
+  });
+
+  it("today 视图只产出逾期/今天两个桶", () => {
+    const tasks = [
+      task({ id: "1", due_date: now.getTime() - DAY }),
+      task({ id: "2", due_date: now.getTime() }),
+    ];
+    const tree = visibleTree(tasks, { kind: "smart", smart: "today" }, "", now);
+    expect(groupByDue(tree, now).map((g) => g.key)).toEqual(["overdue", "today"]);
+  });
+
+  it("父任务的桶决定子任务归属", () => {
+    const tasks = [
+      task({ id: "p", due_date: now.getTime() + 30 * DAY }),
+      task({ id: "c", parent_id: "p", due_date: now.getTime() }),
+    ];
+    const tree = visibleTree(tasks, { kind: "smart", smart: "all" }, "", now);
+    const groups = groupByDue(tree, now);
+    expect(groups.map((g) => g.key)).toEqual(["later"]);
+    expect(groups[0]!.nodes[0]!.children.map((n) => n.id)).toEqual(["c"]);
+  });
+});
+
+describe("splitCompleted（已完成分区）", () => {
+  it("按顶层节点完成状态拆分，父完成带走整棵子树", () => {
+    const tasks = [
+      task({ id: "a" }),
+      task({ id: "b", completed: true }),
+      task({ id: "bc", parent_id: "b" }),
+      task({ id: "c" }),
+    ];
+    const tree = visibleTree(tasks, { kind: "smart", smart: "all" }, "", now);
+    const { active, completed } = splitCompleted(tree);
+    expect(active.map((n) => n.task.id)).toEqual(["a", "c"]);
+    expect(completed.map((n) => n.task.id)).toEqual(["b"]);
+    expect(completed[0]!.children.map((n) => n.id)).toEqual(["bc"]);
   });
 });
 
