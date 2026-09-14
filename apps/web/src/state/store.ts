@@ -16,6 +16,9 @@ export type ViewKind =
   | { kind: "smart"; smart: "today" | "upcoming" | "all" | "trash" }
   | { kind: "project"; id: string };
 
+/** 呈现模式：列表 / 月视图（仅「全部」与项目视图支持月视图）。 */
+export type ViewMode = "list" | "month";
+
 export type Theme = "system" | "light" | "dark";
 
 /** 新建任务输入：缺省字段走创建默认值（sync-core 的 task_defaults）。 */
@@ -37,6 +40,10 @@ interface AppState {
   tasks: TaskRecord[];
   projects: ProjectRecord[];
   view: ViewKind;
+  /** 呈现模式（全局偏好，仅支持月视图的视图生效）。 */
+  viewMode: ViewMode;
+  /** 桌面「未排期」抽屉展开状态。 */
+  unscheduledOpen: boolean;
   search: string;
   selectedTaskId: string | null;
   syncStatus: "offline" | "syncing" | "online";
@@ -95,6 +102,8 @@ export const useApp = create<AppStore>()((set) => ({
   tasks: [],
   projects: [],
   view: { kind: "smart", smart: "today" },
+  viewMode: localStorage.getItem("planwave.ui.viewMode") === "month" ? "month" : "list",
+  unscheduledOpen: localStorage.getItem("planwave.ui.unscheduledOpen") !== "false",
   search: "",
   selectedTaskId: null,
   syncStatus: "offline",
@@ -277,8 +286,28 @@ export const actions = {
     useApp.getState().setPartial({ view, search: "", sidebarOpen: false });
   },
 
+  /** 切换呈现模式：写入偏好；切回月视图时清空搜索（搜索会把用户拉回列表）。 */
+  setViewMode(mode: ViewMode): void {
+    localStorage.setItem("planwave.ui.viewMode", mode);
+    useApp.getState().setPartial({ viewMode: mode, search: "" });
+  },
+
+  /** 收起/展开桌面「未排期」抽屉（持久化偏好）。 */
+  toggleUnscheduled(): void {
+    const s = useApp.getState();
+    const next = !s.unscheduledOpen;
+    localStorage.setItem("planwave.ui.unscheduledOpen", String(next));
+    s.setPartial({ unscheduledOpen: next });
+  },
+
   setSearch(search: string): void {
-    useApp.getState().setPartial({ search });
+    const s = useApp.getState();
+    // 月视图下开始搜索：本次会话切回列表（不写偏好，月视图偏好仍保留）
+    if (search.trim() && s.viewMode === "month") {
+      s.setPartial({ search, viewMode: "list" });
+      return;
+    }
+    s.setPartial({ search });
   },
 
   /** 手动刷新：推送本地积压 + 拉取远端增量。 */
@@ -435,6 +464,25 @@ export const actions = {
     const client = await ensureTypedClient();
     await client.mutate("task", id, JSON.stringify(patch));
     await afterMutate();
+  },
+
+  /** 拖拽改期：改 `due_date` 并给可「撤销」的 Toast（null = 移出日程/清空日期）。 */
+  async rescheduleTaskWithUndo(id: string, dueDate: number | null): Promise<void> {
+    const t = useApp.getState().tasks.find((x) => x.id === id);
+    if (!t || t.due_date === dueDate) return;
+    const prev = t.due_date;
+    await actions.patchTask(id, { due_date: dueDate });
+    const label =
+      dueDate === null
+        ? `已将「${t.title}」移出日程`
+        : `已将「${t.title}」改期到 ${new Date(dueDate).getMonth() + 1} 月 ${new Date(dueDate).getDate()} 日`;
+    toast(label, {
+      timeout: 5_000,
+      actionProps: {
+        children: "撤销",
+        onPress: () => void actions.patchTask(id, { due_date: prev }),
+      },
+    });
   },
 
   async deleteTask(id: string): Promise<void> {

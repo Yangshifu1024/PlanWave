@@ -5,9 +5,11 @@
 //!   preventDefault（React 合成 touch 事件是 passive 的）；
 //! - 仅在容器 scrollTop<=0 且下拉时接管手势并阻止原生滚动，
 //!   其余方向/场景完全放行给原生滚动；
-//! - 阻尼位移（0.4 倍）+ 阈值（64px）判定触发，刷新期间指示器持续显示。
+//! - 阻尼位移（0.4 倍）+ 阈值（64px）判定触发，刷新期间指示器持续显示；
+//! - 用**回调 ref** 挂监听：列表体是条件挂载的（月视图切换会卸载/重挂），
+//!   一次性 `useEffect` 会在「启动即月视图」时漏挂，之后切回列表也补不上。
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 export type PullPhase = "idle" | "pulling" | "ready" | "refreshing";
 
@@ -16,14 +18,17 @@ const MAX_PULL = 120;
 const DAMPING = 0.4;
 
 export function usePullToRefresh(onRefresh: () => Promise<void>) {
-  const ref = useRef<HTMLUListElement | null>(null);
+  const elRef = useRef<HTMLUListElement | null>(null);
   const [pullPx, setPullPx] = useState(0);
   const [phase, setPhase] = useState<PullPhase>("idle");
   // 手势状态放 ref：touchmove 高频触发，避免闭包读到旧 state
   const gesture = useRef({ startY: 0, active: false, pulling: false, phase: "idle" as PullPhase });
+  // onRefresh 每次渲染都是新函数：放进 ref，让下面的事件回调保持稳定
+  const onRefreshRef = useRef(onRefresh);
+  onRefreshRef.current = onRefresh;
 
   const onTouchStart = useCallback((e: TouchEvent) => {
-    const el = ref.current;
+    const el = elRef.current;
     if (!el || el.scrollTop > 0) return;
     const y = e.touches[0]?.clientY;
     if (y === undefined) return;
@@ -33,7 +38,7 @@ export function usePullToRefresh(onRefresh: () => Promise<void>) {
   }, []);
 
   const onTouchMove = useCallback((e: TouchEvent) => {
-    const el = ref.current;
+    const el = elRef.current;
     const g = gesture.current;
     if (!el || !g.active || g.phase === "refreshing") return;
     const delta = (e.touches[0]?.clientY ?? 0) - g.startY;
@@ -65,7 +70,7 @@ export function usePullToRefresh(onRefresh: () => Promise<void>) {
       g.phase = "refreshing";
       setPhase("refreshing");
       setPullPx(THRESHOLD / 2);
-      void Promise.resolve(onRefresh()).finally(() => {
+      void Promise.resolve(onRefreshRef.current()).finally(() => {
         g.phase = "idle";
         setPhase("idle");
         setPullPx(0);
@@ -75,22 +80,28 @@ export function usePullToRefresh(onRefresh: () => Promise<void>) {
       setPhase("idle");
       setPullPx(0);
     }
-  }, [onRefresh]);
+  }, []);
 
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.addEventListener("touchstart", onTouchStart, { passive: true });
-    el.addEventListener("touchmove", onTouchMove, { passive: false });
-    el.addEventListener("touchend", onTouchEnd, { passive: true });
-    el.addEventListener("touchcancel", onTouchEnd, { passive: true });
-    return () => {
-      el.removeEventListener("touchstart", onTouchStart);
-      el.removeEventListener("touchmove", onTouchMove);
-      el.removeEventListener("touchend", onTouchEnd);
-      el.removeEventListener("touchcancel", onTouchEnd);
-    };
-  }, [onTouchStart, onTouchMove, onTouchEnd]);
+  const ref = useCallback(
+    (el: HTMLUListElement | null) => {
+      const prev = elRef.current;
+      if (prev === el) return;
+      if (prev) {
+        prev.removeEventListener("touchstart", onTouchStart);
+        prev.removeEventListener("touchmove", onTouchMove);
+        prev.removeEventListener("touchend", onTouchEnd);
+        prev.removeEventListener("touchcancel", onTouchEnd);
+      }
+      elRef.current = el;
+      if (el) {
+        el.addEventListener("touchstart", onTouchStart, { passive: true });
+        el.addEventListener("touchmove", onTouchMove, { passive: false });
+        el.addEventListener("touchend", onTouchEnd, { passive: true });
+        el.addEventListener("touchcancel", onTouchEnd, { passive: true });
+      }
+    },
+    [onTouchStart, onTouchMove, onTouchEnd],
+  );
 
   return { ref, pullPx, phase, threshold: THRESHOLD };
 }

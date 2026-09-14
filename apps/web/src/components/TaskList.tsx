@@ -7,6 +7,8 @@ import { isDesktopApp } from "../lib/platform";
 import { TaskRow } from "./TaskRow";
 import { QuickAddModal } from "./QuickAddModal";
 import { SyncStatusSheet } from "./SyncStatusSheet";
+import { MonthView } from "./MonthView";
+import { ViewModeToggle } from "./ViewModeToggle";
 
 /** 「已完成」分区展开偏好的 localStorage key。 */
 const SHOW_COMPLETED_KEY = "planwave.ui.showCompleted";
@@ -26,6 +28,7 @@ function viewTitle(view: ViewKind): string {
 export function TaskList() {
   const tasks = useApp((s) => s.tasks);
   const view = useApp((s) => s.view);
+  const viewMode = useApp((s) => s.viewMode);
   const search = useApp((s) => s.search);
   const projects = useApp((s) => s.projects);
   const [draft, setDraft] = useState("");
@@ -42,6 +45,9 @@ export function TaskList() {
 
   const tree = useMemo(() => visibleTree(tasks, view, search), [tasks, view, search]);
   const isTrash = view.kind === "smart" && view.smart === "trash";
+  // 月视图仅支持「全部」与项目视图；其余视图忽略偏好强制列表
+  const monthSupported = view.kind === "project" || (view.kind === "smart" && view.smart === "all");
+  const showMonth = monthSupported && viewMode === "month";
   const searching = search.trim().length > 0;
   const showGroups = !isTrash && !searching;
   const { active, completed } = useMemo(() => splitCompleted(tree), [tree]);
@@ -203,13 +209,14 @@ export function TaskList() {
         </div>
       </div>
 
-      <div className="px-6 pt-4">
+      <div className="flex items-center justify-between gap-2 px-6 pt-4">
         <h1 className="text-2xl font-bold" data-testid="view-title">
           {viewTitle(view)}
         </h1>
+        {monthSupported && <ViewModeToggle />}
       </div>
 
-      {!isTrash && (
+      {!isTrash && !showMonth && (
         <form onSubmit={submit} className="flex gap-2 px-6 pt-3">
           <Input
             value={draft}
@@ -281,8 +288,10 @@ export function TaskList() {
         </div>
       )}
 
-      {/* 下拉刷新指示器：绝对定位于列表上方，随拉拽距离渐显 */}
-      <div className="relative mt-3 flex-1 min-h-0">
+      {showMonth ? (
+        <MonthView />
+      ) : (
+        <div className="relative mt-3 flex-1 min-h-0">
         <div
           className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-center text-xs text-zinc-400 transition-opacity"
           style={{
@@ -402,7 +411,8 @@ export function TaskList() {
             </li>
           )}
         </ul>
-      </div>
+        </div>
+      )}
       {pendingTitle !== null && (
         <QuickAddModal title={pendingTitle} onClose={() => setPendingTitle(null)} />
       )}

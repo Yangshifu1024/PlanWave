@@ -3,13 +3,14 @@ import type { ProjectRecord, TaskRecord } from "../types";
 import { actions, useApp } from "../state/store";
 import { dueLabel } from "../lib/dates";
 
-const PRIORITY_STYLE: Record<number, { dot: string; label: string }> = {
+/** 优先级圆点样式（月视图条目复用）。 */
+export const PRIORITY_STYLE: Record<number, { dot: string; label: string }> = {
   3: { dot: "bg-red-500", label: "高" },
   2: { dot: "bg-orange-400", label: "中" },
   1: { dot: "bg-yellow-400", label: "低" },
 };
 
-const REPEAT_ICON = (
+export const REPEAT_ICON = (
   <svg viewBox="0 0 16 16" className="size-3.5" fill="none" aria-hidden>
     <path
       d="M13 6.5A5 5 0 0 0 3.8 4.6M3 9.5a5 5 0 0 0 9.2 1.9M3.2 2.2v2.6h2.6M12.8 13.8v-2.6h-2.6"
