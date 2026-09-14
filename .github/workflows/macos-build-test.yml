@@ -1,0 +1,95 @@
+# macOS 签名公证构建测试：不依赖发版 tag，随时验证 Developer ID 签名 + notarytool 公证
+# + dmg 补公证钉票整条链路。与 release.yml 的 desktop-macos job 逻辑一致（省去 updater 产物）。
+name: 客户端 macOS 构建测试
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/macos-build-test.yml"
+      - ".github/workflows/release.yml"
+      - "apps/client/**"
+      - "apps/web/**"
+      - "crates/**"
+      - "pnpm-lock.yaml"
+
+jobs:
+  desktop-macos:
+    name: 客户端（macOS dmg，签名+公证）
+    runs-on: macos-latest
+    env:
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - run: pnpm install --frozen-lockfile
+      - name: 安装 wasm-pack
+        run: brew install wasm-pack
+      # Developer ID 证书导入临时钥匙串（APPLE_CERTIFICATE 为 .p12 的 base64）
+      - name: 导入 Developer ID 证书
+        if: env.APPLE_CERTIFICATE != ''
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: release
+        run: |
+          CERTIFICATE=$RUNNER_TEMP/certificate.p12
+          echo -n "$APPLE_CERTIFICATE" | base64 --decode -o $CERTIFICATE
+          KEYCHAIN=$RUNNER_TEMP/planwave.keychain-db
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN
+          security set-keychain-settings -lut 21600 $KEYCHAIN
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN
+          security import $CERTIFICATE -k $KEYCHAIN -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN
+          security list-keychain -d user -s $KEYCHAIN login.keychain-db
+      # 公证走 ASC API key。.p8 必须落盘为绝对路径（notarytool 在临时目录下
+      # 解析相对路径会报 "The file couldn't be opened"）；grep 守卫确保内容完整
+      - name: 写入 App Store Connect API 密钥
+        if: env.APPLE_CERTIFICATE != ''
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          echo "$APPLE_API_KEY_P8" > "$GITHUB_WORKSPACE/AuthKey.p8"
+          grep -q "BEGIN PRIVATE KEY" "$GITHUB_WORKSPACE/AuthKey.p8"
+      - name: Tauri build（universal dmg，签名+公证）
+        if: env.APPLE_CERTIFICATE != ''
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ${{ github.workspace }}/AuthKey.p8
+        run: pnpm --filter @planwave/client exec tauri build --target universal-apple-darwin --bundles dmg
+      # tauri-bundler 只对 .app 公证并 staple，dmg 仅做 codesign——直接分发的 dmg 会被
+      # Gatekeeper 判为 Unnotarized，需要对 dmg 补一轮 notarytool 提交 + stapler 钉票
+      - name: Notarize and staple dmg
+        if: env.APPLE_CERTIFICATE != ''
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          DMG=$(ls target/universal-apple-darwin/release/bundle/dmg/*.dmg | head -n1)
+          xcrun notarytool submit "$DMG" \
+            --key "$GITHUB_WORKSPACE/AuthKey.p8" \
+            --key-id "$APPLE_API_KEY" \
+            --issuer "$APPLE_API_ISSUER" \
+            --wait
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
+      - uses: actions/upload-artifact@v7
+        if: env.APPLE_CERTIFICATE != ''
+        with:
+          name: client-macos-test
+          path: target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+      - name: 未配置签名 Secrets 提示
+        if: env.APPLE_CERTIFICATE == ''
+        run: |
+          echo "::notice::未配置 macOS 签名 Secrets（见 docs/APPLE_SIGNING.md），本次跳过签名打包"
