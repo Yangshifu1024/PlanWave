@@ -260,6 +260,16 @@ jobs:
           security import $CERTIFICATE -k $KEYCHAIN -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN
           security list-keychain -d user -s $KEYCHAIN login.keychain-db
+      # 公证用 ASC API key（账号级，跨产品共用，见 docs/APPLE_SIGNING.md）。
+      # .p8 必须落盘为绝对路径——notarytool 在临时目录下解析相对路径会报
+      # "The file couldn't be opened"；grep 守卫确保内容完整
+      - name: 写入 App Store Connect API 密钥
+        if: env.APPLE_CERTIFICATE != ''
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          echo "$APPLE_API_KEY_P8" > "$GITHUB_WORKSPACE/AuthKey.p8"
+          grep -q "BEGIN PRIVATE KEY" "$GITHUB_WORKSPACE/AuthKey.p8"
       # 未配置签名 Secrets 时 APPLE_* 会是空字符串，tauri 会误判「要签名」，
       # 所以拆成互斥步骤。updater 需要 .app.tar.gz + minisign 签名（tauri.updater.conf.json），
       # 且仅在有 Apple 签名时产出（未签名 app 的自动更新在 macOS 上不可用）
@@ -269,9 +279,9 @@ jobs:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ${{ github.workspace }}/AuthKey.p8
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: >
@@ -283,13 +293,29 @@ jobs:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ${{ github.workspace }}/AuthKey.p8
         run: pnpm --filter @planwave/client exec tauri build --target universal-apple-darwin --config tauri.ci.conf.json --bundles dmg
       - name: Tauri build（universal dmg，未签名）
         if: env.APPLE_CERTIFICATE == ''
         run: pnpm --filter @planwave/client exec tauri build --target universal-apple-darwin --config tauri.ci.conf.json --bundles dmg
+      # tauri-bundler 只对 .app 公证并 staple，dmg 仅做 codesign——直接分发的 dmg 会被
+      # Gatekeeper 判为 Unnotarized，需要对 dmg 补一轮 notarytool 提交 + stapler 钉票
+      - name: Notarize and staple dmg
+        if: env.APPLE_CERTIFICATE != ''
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          DMG=$(ls target/universal-apple-darwin/release/bundle/dmg/*.dmg | head -n1)
+          xcrun notarytool submit "$DMG" \
+            --key "$GITHUB_WORKSPACE/AuthKey.p8" \
+            --key-id "$APPLE_API_KEY" \
+            --issuer "$APPLE_API_ISSUER" \
+            --wait
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
       - uses: actions/upload-artifact@v7
         with:
           name: client-macos
@@ -356,7 +382,7 @@ jobs:
           if-no-files-found: error
 
   ios:
-    name: 客户端（iOS ipa，Ad Hoc 签名）
+    name: 客户端（iOS ipa，App Store 签名）
     runs-on: macos-latest
     needs: [web-dist]
     env:
@@ -382,33 +408,25 @@ jobs:
       # iOS 工程由 macos runner 生成（Windows/Linux 无法 init）
       - name: Tauri ios init
         run: pnpm --filter @planwave/client exec tauri ios init
-      - name: 导入 Ad Hoc 分发证书
+      # 签名材料（base64 p12 / Profile）由 Tauri CLI 从环境变量读取并自动导入临时钥匙串，
+      # Profile UUID 会写进工程与 exportOptions，无需手动 security import（见 docs/APPLE_SIGNING.md）
+      - name: Tauri ios build（App Store ipa）
         if: env.IOS_CERTIFICATE != ''
         env:
           IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
           IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
-          KEYCHAIN_PASSWORD: release
-        run: |
-          CERTIFICATE=$RUNNER_TEMP/ios.p12
-          echo -n "$IOS_CERTIFICATE" | base64 --decode -o $CERTIFICATE
-          KEYCHAIN=$RUNNER_TEMP/ios.keychain-db
-          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN
-          security set-keychain-settings -lut 21600 $KEYCHAIN
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN
-          security import $CERTIFICATE -k $KEYCHAIN -P "$IOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN
-          security list-keychain -d user -s $KEYCHAIN login.keychain-db
-          PROFILE=$RUNNER_TEMP/profile.mobileprovision
-          echo -n "${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}" | base64 --decode -o $PROFILE
-          UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' /dev/stdin <<< \
-            "$(security cms -D -i $PROFILE 2>/dev/null)")
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          cp $PROFILE ~/Library/MobileDevice/Provisioning\ Profiles/$UUID.mobileprovision
-      - name: Tauri ios build（Ad Hoc ipa）
+          IOS_MOBILE_PROVISION: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
+        run: pnpm --filter @planwave/client exec tauri ios build --export-method app-store-connect --config tauri.ci.conf.json
+      # ipa 分发渠道是 App Store（TestFlight/上架），不进 GitHub Release；
+      # 从 Actions 运行页下载 artifact 后用 Transporter / altool 上传
+      - name: 上传 ipa artifact
         if: env.IOS_CERTIFICATE != ''
-        env:
-          IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
-        run: pnpm --filter @planwave/client exec tauri ios build --export-method ad-hoc --config tauri.ci.conf.json
+        uses: actions/upload-artifact@v7
+        with:
+          name: client-ios
+          path: apps/client/gen/apple/build/arm64/*.ipa
+          if-no-files-found: error
       # 未配置签名 Secrets 时给出未签名构建说明，不出 ipa
       - name: 未配置 iOS 签名提示
         if: env.IOS_CERTIFICATE == ''
