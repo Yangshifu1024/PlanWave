@@ -10,7 +10,7 @@ Offline-first, multi-device eventually-consistent to-do app. One Rust→WASM dat
 | `crates/sync-wasm` | wasm-bindgen bindings — the only client data-layer implementation: IndexedDB storage + HTTP transport. Build output goes to `apps/web/src/wasm/pkg` (gitignored). |
 | `apps/server` | Axum backend: `/auth/*`, `/sync/push|pull|snapshot`, `/health`. `Store` trait with two impls: no `DATABASE_URL` ⇒ in-memory store (local dev / tests / E2E); otherwise MySQL via sqlx. |
 | `apps/web` | The only frontend (React 19 + HeroUI v3 + Tailwind v4 + Zustand + Vite). One build artifact serves the standalone site and all native clients' WebViews. |
-| `apps/client` | Tauri 2 shell: window + notifications only, zero storage logic. `gen/android/` is committed; `gen/ios/` can only be generated on macOS. |
+| `apps/client` | Tauri 2 shell: window + notifications only, zero storage logic. `gen/android/` is committed; `gen/apple/` (iOS, from `tauri ios init`) can only be generated on macOS. |
 | `docs/CODE_TOUR.md` | **Read before changing code**: per-directory responsibility tables, the journey of one mutation through the stack, a "which files to touch" quick-reference table. |
 
 ## Common commands

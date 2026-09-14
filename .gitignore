@@ -38,3 +38,4 @@ Thumbs.db
 /packages/client-core/node_modules
 *.log
 .codewave/
+apps/client/gen/apple/

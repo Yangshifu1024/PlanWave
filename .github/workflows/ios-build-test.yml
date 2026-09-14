@@ -1,0 +1,75 @@
+# iOS 签名构建测试：不依赖发版 tag，随时验证 iOS 签名链路。
+# 用途：发版前预检（release.yml 的 ios job 与此逻辑一致）、依赖/Xcode 升级后的回归。
+# 说明：不使用 tauri.ci.conf.json（CI 上由 beforeBuildCommand 现场构建 wasm + web，
+# 因此需要 wasm-pack 与 wasm32 target）。
+name: 客户端 iOS 构建测试
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/ios-build-test.yml"
+      - ".github/workflows/release.yml"
+      - "apps/client/**"
+      - "apps/web/**"
+      - "crates/**"
+      - "pnpm-lock.yaml"
+
+jobs:
+  ios:
+    name: 客户端（iOS ipa，App Store 签名）
+    runs-on: macos-latest
+    env:
+      # 映射成 job 级 env，供步骤 if 判断是否配置了签名
+      IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: pnpm install --frozen-lockfile
+      - name: 安装 wasm-pack
+        run: brew install wasm-pack
+      # iOS 工程由 macos runner 生成（Windows/Linux 无法 init）
+      - name: Tauri ios init
+        run: pnpm --filter @planwave/client exec tauri ios init
+      - name: 写入 App Store Connect API 密钥（iOS 自动签名）
+        if: env.IOS_CERTIFICATE != ''
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          echo "$APPLE_API_KEY_P8" > "$GITHUB_WORKSPACE/AuthKey.p8"
+          grep -q "BEGIN PRIVATE KEY" "$GITHUB_WORKSPACE/AuthKey.p8"
+      # 注意：不要用 IOS_MOBILE_PROVISION —— tauri CLI 会把 PROVISIONING_PROFILE_SPECIFIER
+      # 写到 pbxproj 的 buildSettings 外面，导致 "requires a provisioning profile"（tauri#14462）。
+      # 正确姿势：证书用 IOS_CERTIFICATE* 导入，profile 交给 ASC API key 自动签名解析
+      - name: Tauri ios build（App Store ipa）
+        if: env.IOS_CERTIFICATE != ''
+        env:
+          IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ${{ github.workspace }}/AuthKey.p8
+          APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
+        run: pnpm --filter @planwave/client exec tauri ios build --export-method app-store-connect
+      # ipa 分发渠道是 App Store（TestFlight/上架），不进 GitHub Release；
+      # 从 Actions 运行页下载 artifact 后用 Transporter / altool 上传
+      - name: 上传 ipa artifact
+        if: env.IOS_CERTIFICATE != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: client-ios
+          path: apps/client/gen/apple/build/arm64/*.ipa
+          if-no-files-found: error
+      # 未配置签名 Secrets 时给出提示，不出 ipa
+      - name: 未配置 iOS 签名提示
+        if: env.IOS_CERTIFICATE == ''
+        run: |
+          echo "::notice::未配置 iOS 签名 Secrets（见 docs/APPLE_SIGNING.md），本次跳过 ipa 打包"
