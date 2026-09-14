@@ -173,13 +173,20 @@ pnpm --filter @planwave/client exec tauri ios init
 export APPLE_DEVELOPMENT_TEAM="10位TeamID"                    # CLI 会写入工程 DEVELOPMENT_TEAM
 export IOS_CERTIFICATE="$(base64 -i apple-dist.p12)"          # .p12 的 base64
 export IOS_CERTIFICATE_PASSWORD="导出p12时设的密码"
-export IOS_MOBILE_PROVISION="$(base64 -i planwave-appstore.mobileprovision)"  # Profile 的 base64
+# Profile 解析走 ASC API key 自动签名（本机与 CI 同一路径）：
+export APPLE_API_ISSUER="92f97c49-4ee9-45f3-8840-01b96de486a2"
+export APPLE_API_KEY="8TXR75R484"
+# .p8 已在 ~/.appstoreconnect/private_keys/（默认搜索路径），放别处需 export APPLE_API_KEY_PATH
 
 pnpm --filter @planwave/client exec tauri ios build --export-method app-store-connect
 ```
 
-CLI 会自动完成：证书导入临时钥匙串；Profile 的 UUID 写入工程与 exportOptions（按 Bundle ID 精确匹配）；
-`beforeBuildCommand` 构建 wasm + web。**产物：`apps/client/gen/apple/build/arm64/PlanWave.ipa`**。
+> ⚠️ **不要使用 `IOS_MOBILE_PROVISION` 环境变量**：tauri CLI 存在 bug
+> （[tauri#14462](https://github.com/tauri-apps/tauri/issues/14462)，截至 CLI 2.11 未修复），
+> 会把 `PROVISIONING_PROFILE_SPECIFIER` 写到 pbxproj 的 buildSettings 字典外面，
+> 导致 xcodebuild 报 `requires a provisioning profile`。Profile 一律交给 ASC API key 自动签名解析。
+
+产物：`apps/client/gen/apple/build/arm64/PlanWave.ipa`（构建日志也会打印路径）。
 
 > `--export-method` 合法取值（Tauri CLI 2.x）：`app-store-connect`（上架/TestFlight）、
 > `release-testing`、`debugging`。旧文档里的 `ad-hoc` 是无效值，会直接报错。
@@ -214,19 +221,23 @@ App Store Connect → Upload。
   **隐私政策 URL**（必填）、App Privacy 问卷、年龄分级 → 提交
 - 审核备注可说明：PlanWave 支持完全离线使用，同步服务器为可选项，无账号也能用全部核心功能
 
-### 5. 配置 CI Secrets（3 个 + 复用 APPLE_TEAM_ID）
+### 5. 配置 CI Secrets（2 个 + 复用 4 个）
 
 | Secret | 内容 |
 | --- | --- |
 | `IOS_CERTIFICATE` | Apple Distribution .p12 的 base64：`base64 -i apple-dist.p12 \| pbcopy` |
 | `IOS_CERTIFICATE_PASSWORD` | 该 .p12 的导出密码 |
-| `IOS_PROVISIONING_PROFILE_BASE64` | App Store Profile 的 base64：`base64 -i planwave-appstore.mobileprovision \| pbcopy` |
-| `APPLE_TEAM_ID` | 与 macOS 共用（`ios` job 读取后注入 `APPLE_DEVELOPMENT_TEAM`） |
+| `APPLE_TEAM_ID` | `ZE5SZ85EZQ`（注入 `APPLE_DEVELOPMENT_TEAM`） |
+| `APPLE_API_ISSUER` / `APPLE_API_KEY` / `APPLE_API_KEY_P8` | 与 macOS 共用（profile 自动签名解析） |
+
+> `IOS_PROVISIONING_PROFILE_BASE64` 目前 CI 不再读取（Profile 由 ASC API key 自动解析），
+> 配置与否不影响构建。
 
 ### 6. CI 行为
 
-`release.yml` 的 `ios` job：`tauri ios init` 生成工程 → `tauri ios build --export-method
-app-store-connect`（CLI 自动导入证书与 Profile、注入 Team）→ **ipa 上传为 workflow artifact
+`release.yml` 的 `ios` job：`tauri ios init` 生成工程 → 证书经 `IOS_CERTIFICATE*` 导入
+Tauri 临时钥匙串，Profile 由 ASC API key 自动签名解析（规避 tauri#14462 的 pbxproj 写坏 bug）→
+`tauri ios build --export-method app-store-connect` → **ipa 上传为 workflow artifact
 （`client-ios`）**，从 Actions 运行页下载后按上节方式上传 App Store Connect。
 ipa 不进 GitHub Release（iOS 分发渠道是 App Store）。未配置 Secrets 时跳过并打 notice。
 

@@ -408,14 +408,24 @@ jobs:
       # iOS 工程由 macos runner 生成（Windows/Linux 无法 init）
       - name: Tauri ios init
         run: pnpm --filter @planwave/client exec tauri ios init
-      # 签名材料（base64 p12 / Profile）由 Tauri CLI 从环境变量读取并自动导入临时钥匙串，
-      # Profile UUID 会写进工程与 exportOptions，无需手动 security import（见 docs/APPLE_SIGNING.md）
+      - name: 写入 App Store Connect API 密钥（iOS 自动签名）
+        if: env.IOS_CERTIFICATE != ''
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          echo "$APPLE_API_KEY_P8" > "$GITHUB_WORKSPACE/AuthKey.p8"
+          grep -q "BEGIN PRIVATE KEY" "$GITHUB_WORKSPACE/AuthKey.p8"
+      # 注意：不要用 IOS_MOBILE_PROVISION —— tauri CLI 会把 PROVISIONING_PROFILE_SPECIFIER
+      # 写到 pbxproj 的 buildSettings 外面，导致 "requires a provisioning profile"（tauri#14462）。
+      # 正确姿势：证书用 IOS_CERTIFICATE* 导入，profile 交给 ASC API key 自动签名解析
       - name: Tauri ios build（App Store ipa）
         if: env.IOS_CERTIFICATE != ''
         env:
           IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
           IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
-          IOS_MOBILE_PROVISION: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ${{ github.workspace }}/AuthKey.p8
           APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
         run: pnpm --filter @planwave/client exec tauri ios build --export-method app-store-connect --config tauri.ci.conf.json
       # ipa 分发渠道是 App Store（TestFlight/上架），不进 GitHub Release；
