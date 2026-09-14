@@ -141,3 +141,77 @@ export function projectNameOf(
 ): string {
   return projects.find((p) => p.id === id)?.name ?? "";
 }
+
+/** 截止时间分桶（列表页分组用）。 */
+export type DueBucket = "overdue" | "today" | "tomorrow" | "thisWeek" | "later" | "none";
+
+/** 分组渲染顺序（空桶不产出）。 */
+export const DUE_BUCKET_ORDER: DueBucket[] = [
+  "overdue",
+  "today",
+  "tomorrow",
+  "thisWeek",
+  "later",
+  "none",
+];
+
+export const DUE_BUCKET_LABELS: Record<DueBucket, string> = {
+  overdue: "逾期",
+  today: "今天",
+  tomorrow: "明天",
+  thisWeek: "7 天内",
+  later: "以后",
+  none: "无日期",
+};
+
+/** 任务落入哪个时间桶：无截止日 → none。按本地时区「日差」计算。 */
+export function dueBucket(task: TaskRecord, now = new Date()): DueBucket {
+  if (task.due_date === null) return "none";
+  const todayStart = startOfDay(now).getTime();
+  const dueStart = startOfDay(new Date(task.due_date)).getTime();
+  const dayDiff = Math.round((dueStart - todayStart) / 86_400_000);
+  if (dayDiff < 0) return "overdue";
+  if (dayDiff === 0) return "today";
+  if (dayDiff === 1) return "tomorrow";
+  if (dayDiff <= 7) return "thisWeek";
+  return "later";
+}
+
+export interface TaskGroup {
+  key: DueBucket;
+  label: string;
+  nodes: TaskTree[];
+}
+
+/**
+ * 按截止时间给顶层任务节点分桶：桶内保持入参顺序（调用前已 `sortTasks`），
+ * 空桶不产出。父任务入哪个桶，其子任务即跟随（节点是整棵树）。
+ */
+export function groupByDue(nodes: TaskTree[], now = new Date()): TaskGroup[] {
+  const buckets = new Map<DueBucket, TaskTree[]>();
+  for (const node of nodes) {
+    const key = dueBucket(node.task, now);
+    const list = buckets.get(key) ?? [];
+    if (list.length === 0) buckets.set(key, list);
+    list.push(node);
+  }
+  return DUE_BUCKET_ORDER.filter((key) => buckets.has(key)).map((key) => ({
+    key,
+    label: DUE_BUCKET_LABELS[key],
+    nodes: buckets.get(key)!,
+  }));
+}
+
+/** 按顶层节点的完成状态拆分：父完成 → 整棵子树进入 completed。 */
+export function splitCompleted(nodes: TaskTree[]): {
+  active: TaskTree[];
+  completed: TaskTree[];
+} {
+  const active: TaskTree[] = [];
+  const completed: TaskTree[] = [];
+  for (const node of nodes) {
+    if (node.task.completed) completed.push(node);
+    else active.push(node);
+  }
+  return { active, completed };
+}

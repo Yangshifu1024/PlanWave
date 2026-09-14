@@ -9,6 +9,7 @@ vi.mock("../src/state/store", () => ({
   actions: {
     selectTask: vi.fn(),
     toggleTask: vi.fn(),
+    toggleTaskWithUndo: vi.fn(),
     deleteTask: vi.fn(),
     restoreTask: vi.fn(),
     openPurgeConfirm: vi.fn(),
@@ -43,16 +44,29 @@ beforeEach(() => {
 });
 
 describe("TaskRow", () => {
-  it("勾选框触发完成确认（确认后执行 toggleTask）", () => {
+  it("勾选框即时切换完成状态（带撤销，不再弹确认框）", () => {
     const { container } = render(<TaskRow task={task({})} showProject={false} projects={[]} />);
     expect(screen.getByText("写周报")).toBeInTheDocument();
     // jsdom 不实现 label 点击转发，直接点底层 input（label 点击路径由 E2E 覆盖）
     fireEvent.click(container.querySelector('input[type="checkbox"]')!);
-    expect(vi.mocked(actions.requestConfirm)).toHaveBeenCalledTimes(1);
-    const request = vi.mocked(actions.requestConfirm).mock.calls[0]![0]!;
-    expect(request.title).toBe("完成任务");
-    request.action();
-    expect(vi.mocked(actions.toggleTask)).toHaveBeenCalledWith("t1");
+    expect(vi.mocked(actions.toggleTaskWithUndo)).toHaveBeenCalledWith("t1");
+    expect(vi.mocked(actions.requestConfirm)).not.toHaveBeenCalled();
+  });
+
+  it("showDivider 时顶层行带内嵌分隔线伪元素类，子任务不显示", () => {
+    const { container: withDivider } = render(
+      <TaskRow task={task({})} showProject={false} projects={[]} showDivider />,
+    );
+    expect(withDivider.querySelector('[data-testid="task-row"]')!.className).toContain(
+      "before:bg-zinc-200/70",
+    );
+    const { container: subtask } = render(
+      <TaskRow task={task({})} showProject={false} projects={[]} isSubtask />,
+    );
+    expect(subtask.querySelector('[data-testid="task-row"]')!.className).not.toContain(
+      "before:bg-zinc-200/70",
+    );
+    expect(subtask.querySelector('[data-testid="task-row"]')!.className).toContain("ml-9");
   });
 
   it("已完成任务标题带删除线样式", () => {

@@ -80,12 +80,13 @@ test.describe.serial("PlanWave Web E2E", () => {
     });
     await expect(row(page, "写周报").getByText("工作", { exact: true })).toBeVisible();
 
-    // 勾选完成（带确认弹框）→ 删除线；再取消完成
+    // 勾选完成（即时 + 撤销 Toast）→ 进入折叠的「已完成」分区 → 展开后可见删除线；再取消完成
     await page.getByTestId("check-写周报").click();
-    await acceptConfirm(page);
+    await expect(page.getByTestId("completed-toggle")).toBeVisible({ timeout: 10_000 });
+    await page.getByTestId("completed-toggle").click();
     await expect(row(page, "写周报").locator("span.line-through")).toBeVisible({ timeout: 10_000 });
     await page.getByTestId("check-写周报").click();
-    await acceptConfirm(page);
+    await expect(page.getByTestId("completed-toggle")).not.toBeVisible({ timeout: 10_000 });
 
     // 搜索
     await page.getByTestId("search-input").fill("周报");
@@ -210,19 +211,22 @@ test.describe.serial("PlanWave Web E2E", () => {
       )
       .toBeGreaterThan(0);
 
-    // B 勾选完成 → A 手动刷新后看到删除线
+    // B 勾选完成（即时，无确认框）→ A 刷新后任务进入折叠的「已完成」分区；展开看到删除线
     await b.getByTestId("check-刷新同步任务").click();
-    await b.getByTestId("confirm-accept").click();
     await expect
       .poll(
         async () => {
           await a.getByTestId("refresh-button").click();
           await a.waitForTimeout(250);
-          return row(a, "刷新同步任务").locator("span.line-through").count();
+          return a.getByTestId("completed-toggle").count();
         },
         { timeout: 15_000, intervals: [500, 1_000] },
       )
       .toBeGreaterThan(0);
+    await a.getByTestId("completed-toggle").click();
+    await expect(row(a, "刷新同步任务").locator("span.line-through")).toBeVisible({
+      timeout: 10_000,
+    });
 
     // A 软删后从回收站彻底删除 → B 手动刷新后永久消失
     await row(a, "刷新同步任务").click();
@@ -236,6 +240,8 @@ test.describe.serial("PlanWave Web E2E", () => {
     await expect(a.getByTestId("purge-modal")).toBeVisible();
     await a.getByTestId("purge-confirm").click();
     await expect(row(a, "刷新同步任务")).not.toBeVisible({ timeout: 10_000 });
+    // B 端也展开「已完成」分区，确保「删除传播」的断言不是靠折叠隐藏侥幸通过
+    await b.getByTestId("completed-toggle").click();
     await expect
       .poll(
         async () => {

@@ -32,6 +32,8 @@ export function TaskRow(props: {
   onToggleCollapse?: () => void;
   /** 子任务行：缩进展示。 */
   isSubtask?: boolean;
+  /** 顶层存活任务显示内嵌发丝分隔线（悬停/选中时隐藏）。 */
+  showDivider?: boolean;
   /** 回收站多选：选中态与切换回调（仅墓碑行使用）。 */
   trashSelected?: boolean;
   onToggleTrashSelect?: () => void;
@@ -44,6 +46,7 @@ export function TaskRow(props: {
     collapsed,
     onToggleCollapse,
     isSubtask,
+    showDivider,
     trashSelected,
     onToggleTrashSelect,
   } = props;
@@ -57,9 +60,13 @@ export function TaskRow(props: {
 
   return (
     <div
-      className={`group flex cursor-default items-center gap-3 rounded-xl px-3 py-2 transition ${
+      className={`group relative flex cursor-default items-center gap-3 rounded-xl px-3 py-2 transition ${
         selected ? "bg-blue-50 dark:bg-blue-500/10" : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
-      } ${isSubtask ? "ml-9 border-l border-zinc-200 pl-2.5 dark:border-zinc-700" : ""}`}
+      } ${isSubtask ? "ml-9" : ""} ${
+        showDivider
+          ? "before:pointer-events-none before:absolute before:bottom-0 before:left-11 before:right-3 before:h-px before:bg-zinc-200/70 before:transition-opacity group-hover:before:opacity-0 dark:before:bg-zinc-800"
+          : ""
+      } ${selected ? "before:opacity-0" : ""}`}
       onClick={() => actions.selectTask(task.id)}
       data-testid="task-row"
       data-task-title={task.title}
@@ -83,14 +90,7 @@ export function TaskRow(props: {
         ) : (
           <Checkbox
             isSelected={task.completed}
-            onChange={() =>
-              actions.requestConfirm({
-                title: task.completed ? "取消完成" : "完成任务",
-                message: `将「${task.title}」标记为${task.completed ? "未完成" : "已完成"}？`,
-                confirmLabel: task.completed ? "取消完成" : "完成",
-                action: () => actions.toggleTask(task.id),
-              })
-            }
+            onChange={() => void actions.toggleTaskWithUndo(task.id)}
             data-testid={`check-${task.title}`}
             aria-label={task.completed ? "标记未完成" : "标记完成"}
           >
@@ -105,8 +105,12 @@ export function TaskRow(props: {
 
       <div className="min-w-0 flex-1">
         <span
-          className={`block truncate text-sm ${
-            task.completed || task.deleted ? "text-zinc-400 line-through" : ""
+          className={`block truncate ${isSubtask ? "text-[13px]" : "text-sm"} ${
+            task.completed || task.deleted
+              ? "text-zinc-400 line-through"
+              : isSubtask
+                ? "text-zinc-500 dark:text-zinc-400"
+                : ""
           }`}
         >
           {task.title}

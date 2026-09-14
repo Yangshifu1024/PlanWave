@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { Toast } from "@heroui/react";
 import { actions, useApp } from "./state/store";
 import { scheduleAutoUpdateCheck } from "./lib/updater";
 import { AuthScreen } from "./components/AuthScreen";
@@ -34,6 +35,8 @@ export default function App() {
       <UpdateDialog />
       <AppConfirmDialog />
       <SettingsDialog />
+      {/* 全局 Toast 区域（列表页「撤销完成」等）；使用 HeroUI 全局 toast 队列 */}
+      <Toast.Provider placement="bottom" />
     </>
   );
 }
