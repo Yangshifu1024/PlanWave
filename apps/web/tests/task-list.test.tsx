@@ -12,6 +12,7 @@ const mockState = {
   view: { kind: "smart", smart: "all" } as
     | { kind: "smart"; smart: string }
     | { kind: "project"; id: string },
+  viewMode: "list" as "list" | "month",
   search: "",
   syncStatus: "online" as const,
 };
@@ -24,6 +25,7 @@ vi.mock("../src/state/store", () => {
       refresh: vi.fn(),
       toggleSidebar: vi.fn(),
       setSearch: vi.fn(),
+      setViewMode: vi.fn(),
       openSyncSheet: vi.fn(),
       openPurgeConfirm: vi.fn(),
       selectTask: vi.fn(),
@@ -32,6 +34,8 @@ vi.mock("../src/state/store", () => {
     useApp,
   };
 });
+
+vi.mock("../src/components/MonthView", () => ({ MonthView: () => <div data-testid="month-view" /> }));
 
 vi.mock("../src/lib/usePullToRefresh", () => ({
   usePullToRefresh: () => ({ ref: () => {}, pullPx: 0, phase: "idle" }),
@@ -74,6 +78,7 @@ beforeEach(() => {
   mockState.tasks = [];
   mockState.projects = [];
   mockState.view = { kind: "smart", smart: "all" };
+  mockState.viewMode = "list";
   mockState.search = "";
 });
 
@@ -149,9 +154,39 @@ describe("TaskList 平铺分支", () => {
     expect(screen.queryByTestId("completed-toggle")).not.toBeInTheDocument();
     expect(screen.getByText("墓碑")).toBeInTheDocument();
   });
+});
 
+describe("TaskList 空态", () => {
   it("空列表渲染空态", () => {
     render(<TaskList />);
     expect(screen.getByTestId("empty-state")).toBeInTheDocument();
+  });
+});
+
+describe("TaskList 月视图切换", () => {
+  it("「全部」与项目视图显示切换器", () => {
+    render(<TaskList />);
+    expect(screen.getByTestId("view-mode-toggle")).toBeInTheDocument();
+  });
+
+  it("今天视图不显示切换器", () => {
+    mockState.view = { kind: "smart", smart: "today" };
+    render(<TaskList />);
+    expect(screen.queryByTestId("view-mode-toggle")).not.toBeInTheDocument();
+  });
+
+  it("viewMode=month 时渲染月视图而非列表体", () => {
+    mockState.viewMode = "month";
+    render(<TaskList />);
+    expect(screen.getByTestId("month-view")).toBeInTheDocument();
+    expect(screen.queryByTestId("task-list")).not.toBeInTheDocument();
+  });
+
+  it("今天视图即便偏好为月也强制列表", () => {
+    mockState.view = { kind: "smart", smart: "today" };
+    mockState.viewMode = "month";
+    render(<TaskList />);
+    expect(screen.queryByTestId("month-view")).not.toBeInTheDocument();
+    expect(screen.getByTestId("task-list")).toBeInTheDocument();
   });
 });

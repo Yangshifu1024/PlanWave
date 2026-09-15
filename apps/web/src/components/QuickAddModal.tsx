@@ -1,21 +1,30 @@
 import { useRef, useState, type FormEvent } from "react";
 import { Button, Input, ListBox, ListBoxItem, Modal, Select, TextArea } from "@heroui/react";
 import { actions, useApp } from "../state/store";
-import { fromDateInput } from "../lib/dates";
+import { fromDateInput, toDateInput } from "../lib/dates";
 import { Field, PRIORITIES } from "./TaskDetail";
 
 /**
  * 新建任务详情弹框：快速添加回车后弹出，标题预填输入框内容。
+ * `dueDate` 可选预填（月视图点格子新建时传入当天）。
  * 「关闭」（含 Esc/点遮罩）= 放弃创建；「保存」校验标题非空后创建任务。
  */
-export function QuickAddModal({ title, onClose }: { title: string; onClose: () => void }) {
+export function QuickAddModal({
+  title,
+  dueDate = null,
+  onClose,
+}: {
+  title: string;
+  dueDate?: number | null;
+  onClose: () => void;
+}) {
   const projects = useApp((s) => s.projects);
   const view = useApp((s) => s.view);
   // 弹框为条件挂载（关闭即卸载），草稿只需按 props 初始化一次
   const [draft, setDraft] = useState(() => ({
     title,
     priority: 0,
-    due: "", // yyyy-MM-dd，空串 = 未设置
+    due: toDateInput(dueDate), // yyyy-MM-dd，空串 = 未设置
     project_id: view.kind === "project" ? view.id : "",
     labels: "",
     notes: "",

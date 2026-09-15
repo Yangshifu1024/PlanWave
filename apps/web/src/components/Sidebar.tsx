@@ -3,6 +3,7 @@ import { Button, Dropdown, DropdownItem, DropdownMenu, DropdownPopover, Dropdown
 import type { ProjectRecord } from "../types";
 import { actions, useApp, type ViewKind } from "../state/store";
 import { countTasks } from "../lib/filters";
+import { PROJECT_DOT_COLORS, projectDotClass } from "../lib/projectColors";
 import { isDesktopApp } from "../lib/platform";
 import { ProjectRenameDialog } from "./ProjectRenameDialog";
 import { Logo } from "../App";
@@ -13,16 +14,6 @@ const SMART_LISTS: { key: "today" | "upcoming" | "all" | "trash"; label: string 
   { key: "all", label: "全部" },
   { key: "trash", label: "回收站" },
 ];
-
-/** Tailwind 静态类名映射（动态拼接的类名不会被打包器保留）。 */
-const DOT_COLORS: Record<string, string> = {
-  blue: "bg-blue-400",
-  red: "bg-red-400",
-  orange: "bg-orange-400",
-  green: "bg-green-400",
-  purple: "bg-purple-400",
-  gray: "bg-gray-400",
-};
 
 /** 左侧栏：智能清单 + 项目列表 + 设置/登出。桌面常驻，移动端抽屉。
  * 导航区滚动、底行固定：项目再多也不会把设置/登出推出视野。
@@ -193,7 +184,7 @@ function ProjectRow(props: {
         }`}
       >
         <span className="flex min-w-0 items-center gap-2">
-          <span className={`size-2 shrink-0 rounded-full ${DOT_COLORS[p.color] ?? DOT_COLORS.gray}`} />
+          <span className={`size-2 shrink-0 rounded-full ${projectDotClass(p.color)}`} />
           <span className="truncate">{p.name}</span>
         </span>
         {props.count > 0 && (
@@ -219,7 +210,7 @@ function ProjectRow(props: {
               裸 div 会被集合构建剔除（首版「弹层开着但内容为空」的根因）。 */}
           <div aria-label="项目颜色" className="flex items-center gap-1.5 px-2 pt-2">
             <span className="text-xs font-medium text-zinc-400">颜色</span>
-            {Object.entries(DOT_COLORS).map(([color, cls]) => (
+            {Object.entries(PROJECT_DOT_COLORS).map(([color, cls]) => (
               <button
                 key={color}
                 aria-label={`颜色：${color}`}

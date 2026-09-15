@@ -69,9 +69,10 @@ v2 的关键决定：**客户端数据层只有一种实现**——同步语义�
 |---|---|
 | `src/wasm/client.ts` | WASM 装载器 + 类型化包装（JSON 字符串 ↔ 对象）；调试句柄 `__planwave` |
 | `src/state/store.ts` | Zustand 全局状态 + 所有领域动作（addTask/toggleTask…），全部转调 WASM 客户端 `mutate`；**1.5s 防抖自动推送**、60s 前台轮询、聚焦/online 事件桥、reload 世代号（防并发旧读覆盖新写） |
-| `src/components/` | AuthScreen（登录）、Sidebar（侧栏）、TaskList（列表+搜索+刷新按钮+同步徽章+下拉刷新）、TaskRow（单行，子任务缩进/进度/折叠）、TaskDetail（详情面板+子任务管理+重复规则编辑器）、SyncStatusSheet（同步状态详情页：pending 队列/最近 op/错误），全部 HeroUI v3 |
+| `src/components/` | AuthScreen（登录）、Sidebar（侧栏）、TaskList（列表+搜索+刷新按钮+同步徽章+下拉刷新+列表/月切换）、MonthView（月网格+拖拽改期+未排期抽屉）、DayTasksOverlay（某天任务浮层）、TaskRow（单行，子任务缩进/进度/折叠）、TaskDetail（详情面板+子任务管理+重复规则编辑器）、SyncStatusSheet（同步状态详情页：pending 队列/最近 op/错误），全部 HeroUI v3 |
 | `src/lib/platform.ts` | API 地址解析：`VITE_API_BASE` 显式配置 → dev/preview 端口（5173/4173→8787）启发式 → 生产同源 `/api` |
 | `src/lib/filters.ts` | 今天/最近7天/全部/回收站 的筛选排序 + `visibleTree` 子任务树（父不可见时子任务提升为顶层行，纯函数） |
+| `src/lib/monthGrid.ts` | 月视图纯逻辑：周一起始的固定 6 行网格、按本地日分桶、溢出计数、「未排期」筛选、拖拽改期语义（纯函数） |
 | `src/lib/recurrence.ts` | 重复任务到期滚动（本地时区保时刻、月/年末日收敛、周几组合）+ 规则中文摘要 |
 | `src/lib/opSummary.ts` | op patch → 中文动作摘要（同步详情页展示） |
 | `src/lib/usePullToRefresh.ts` | 移动端下拉刷新手势 hook（原生非 passive touch 监听 + 阻尼 + 阈值触发） |
@@ -140,6 +141,7 @@ v2 的关键决定：**客户端数据层只有一种实现**——同步语义�
 | 改同步详情页内容 | `crates/sync-wasm` 的 `sync_details`（数据面）+ `apps/web/src/components/SyncStatusSheet.tsx` | 最近 op 记录在 idb `recent_ops` 环形日志 |
 | 改界面/交互 | `apps/web/src/components/` | 纯 UI（HeroUI v3），不碰同步 |
 | 改视图逻辑（今天/最近7天…） | `apps/web/src/lib/filters.ts` | 纯函数，有单测 |
+| 改月视图（网格/拖拽/未排期） | `apps/web/src/lib/monthGrid.ts`（纯逻辑）+ `apps/web/src/components/MonthView.tsx`（网格与 Pointer Events 拖拽）+ `UnscheduledTray.tsx` / `DayTasksOverlay.tsx` | 纯前端，不碰同步层；只认 `due_date`，无开始/结束时间 |
 | 加服务端 API | `apps/server/src/api/` | 记得在 `api/mod.rs` 注册路由 |
 | 改合并/冲突策略 | `sync-core/src/merge.rs` | 先改测试再改实现，随机化收敛测试会兜底 |
 | 改刷新节奏（轮询间隔等） | `apps/web/src/state/store.ts` 的 `startPolling` / `scheduleAutoSync` | 拉取式的唯一「频率」旋钮 |
