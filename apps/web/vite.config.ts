@@ -29,6 +29,9 @@ export default defineConfig({
       },
     },
   },
-  // Tauri 开发时固定端口供 shell 加载
-  server: { port: 5173, strictPort: true },
+  // Tauri 开发时固定端口供 shell 加载；devUrl 用 localhost。
+  // `tauri android dev` 会把 devUrl 的 host 换成局域网 IP 并在启动 BeforeDevCommand 前注入
+  // TAURI_DEV_HOST（见 tauri-cli mobile/mod.rs），所以真机调试时必须监听全部网卡，
+  // 否则 CLI 会一直等不到 dev server。纯 web 开发（无该变量）仍只绑 localhost。
+  server: { port: 5173, strictPort: true, host: process.env.TAURI_DEV_HOST ? true : undefined },
 });
