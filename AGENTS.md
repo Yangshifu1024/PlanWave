@@ -141,6 +141,8 @@ Trigger: development done, new code awaiting merge
 - Titlebar asymmetry: macOS uses `titleBarStyle: "Overlay"` from `tauri.conf.json`; Windows gets a frameless window via `WindowControls.tsx` calling `setDecorations(false)` with custom min/max/close buttons.
 - Android builds: `PLANWAVE_CN_MIRROR=1` enables Aliyun Maven mirrors (off by default — aliyun 502s hard-fail CI).
 - Android APK signing comes only from `gen/android/keystore.properties` + the `signingConfigs` block in `app/build.gradle.kts` — there is no `TAURI_ANDROID_KEYSTORE_*` env var; unsigned APKs fail CI (see `docs/ANDROID_SIGNING.md`).
+- Android is edge-to-edge (`targetSdk 36` + `enableEdgeToEdge()`), so the WebView draws under the system bars; `gen/android/app/src/main/java/xyz/yangshifu/planwave/MainActivity.kt` turns `systemBars | displayCutout` insets into padding on `android.R.id.content`. That is the only tracked Java source under `app/src/main/java/` — `tauri android init` only creates missing files (only `BuildTask.kt` is rewritten), so it survives re-init but not deleting/regenerating `gen/android`.
+- Native builds need a prior `tauri android dev|build` to generate `gen/android/app/src/main/java/<package>/generated/*.kt` (gitignored); a bare `gradlew` task fails with `Unresolved reference: TauriActivity` otherwise.
 - No `DATABASE_URL` ⇒ in-memory store, wiped on restart. That's a feature for local dev/E2E, not a bug.
 
 ## Further documentation
