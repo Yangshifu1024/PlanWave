@@ -183,7 +183,7 @@ export function TaskList() {
         <Input
           value={search}
           onChange={(e) => actions.setSearch(e.target.value)}
-          placeholder="搜索任务、备注、标签…"
+          placeholder="搜索"
           data-testid="search-input"
           className="min-w-0 flex-1 sm:w-56 sm:flex-none"
         />
