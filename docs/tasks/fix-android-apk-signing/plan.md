@@ -60,6 +60,37 @@
 
 - 历史 Release（v0.4.6 及更早）上的未签名 APK 暂不清理，由下个版本覆盖（已与用户确认）。
 
+## 返工：v0.4.7 发布时 Android job 首步失败（2026-09-16）
+
+现象：v0.4.7 的 release run `35090046981` 中 Android job 在「配置 Android 签名」即刻失败——
+
+```
+base64: invalid option -- 'o'
+```
+
+其余 8 个 job（docker×2 / web-dist / windows / linux / macos / ios）全部成功，`发布 GitHub Release` 因依赖失败被跳过，**没有创建 draft、没有发布任何客户端产物**（GHCR 的 0.4.7 镜像已推送，无法回撤）。
+
+根因：该步骤的解码命令 `echo -n "$B64" | base64 --decode -o "$KEYSTORE"` 是 BSD/macOS 写法。Android job 跑在 ubuntu 上，`base64` 来自 GNU coreutils，**没有 `-o`**（只能写 stdout）。这行是从旧 workflow 抄来的：旧代码里它被 `if [ -n "$TAURI_ANDROID_KEYSTORE_PASSWORD" ]` 包着，而那个 Secret 从来不存在，因此**这行命令从未真正执行过**——bug 潜伏至今，直到本次修复让签名必然配置后才第一次跑到。
+
+对照组：`release.yml:257` 的 macOS job 有完全相同的 `-o` 写法，但 macos runner 是 BSD base64，所以它是对的。**只需修 Android 这一处。**
+
+修复：
+
+```bash
+printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+[ -s "$KEYSTORE" ] || { echo "::error::keystore 解码为空"; exit 1; }
+```
+
+并在注释里标注「别照抄 macOS job」；本地用 macOS base64 编码 → stdout 重定向解码做了往返比对。
+
+教训：
+
+1. 跨 runner（ubuntu / macos）复制 shell 片段必须单独核对 BSD 与 GNU 的选项差异（`base64 -o`、`sed -i ''`、`stat -f` 等）。
+2. 「条件永远为假的分支」等于未测试代码。本次 code review 把它当成「既有的、之前也这么写的」放过了，是漏检——凡是本次修复会**首次执行**的旧代码路径，都应假设它从未被验证。
+3. fail-loud 设计按预期生效：红在第一步，而不是少一个端悄悄发出去。
+
+版本处置：v0.4.7 的 tag 已消费且只推了 GHCR 镜像、没有任何 Release 产物；按 release skill「失败的 tag 不移动」，下次发布用 **0.4.8**。
+
 ## 验证
 
 - [x] `node --check scripts/gen-latest-json.mjs` + 参数组合手动跑通（无 apk → `android` 段省略 / 有 apk → 段完整 / 只给 `--apk` → 报「必须成对提供」）

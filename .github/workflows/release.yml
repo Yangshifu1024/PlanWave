@@ -387,7 +387,13 @@ jobs:
             exit 1
           fi
           KEYSTORE="$RUNNER_TEMP/planwave.keystore"
-          echo -n "$ANDROID_KEYSTORE_BASE64" | base64 --decode -o "$KEYSTORE"
+          # 这里的 base64 是 GNU coreutils（ubuntu runner）：没有 -o，只能写到 stdout。
+          # 别照抄 macOS job（macos runner 是 BSD base64，才有 -o）。
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+          if [ ! -s "$KEYSTORE" ]; then
+            echo "::error::keystore 解码为空，检查 ANDROID_KEYSTORE_BASE64 内容"
+            exit 1
+          fi
           cat > apps/client/gen/android/keystore.properties <<EOF
           password=${ANDROID_KEYSTORE_PASSWORD}
           keyAlias=${ANDROID_KEY_ALIAS}
