@@ -221,9 +221,7 @@ export function TaskList() {
           <Input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder={
-              view.kind === "smart" ? "添加到「收集箱」（无项目）" : "添加任务，回车填写详情"
-            }
+            placeholder="输入任务"
             data-testid="new-task-input"
             fullWidth
           />
