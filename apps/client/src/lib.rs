@@ -14,6 +14,15 @@ mod update_apk;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Android/iOS：tauri 在 dev 下会为 `tauri://` 协议处理器构建 reqwest 客户端，
+    // 但它只在 https devUrl 分支安装 rustls provider（tauri 2.11.x）——devUrl 为 http
+    // 时会因缺少 provider 直接 abort。因此在任何插件/窗口创建前提前安装（幂等，
+    // 上游自行修复后本处只是重复一次无副作用的检查）。
+    #[cfg(mobile)]
+    if rustls::crypto::CryptoProvider::get_default().is_none() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    }
+
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
