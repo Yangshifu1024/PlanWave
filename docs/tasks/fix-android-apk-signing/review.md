@@ -28,10 +28,10 @@
 
 ## 🟡 一般问题（建议修复）
 
-1. **密钥缺失时静默丢掉 Android 交付物**
-   - 位置：`.github/workflows/release.yml:379-382`（「配置 Android 签名」的 `signed=false` 分支）
-   - 描述：secrets 缺失或被误删时，job 成功、无 artifact、`latest.json` 无 `android` 段；Android 端「检查更新」会得到「已是最新版本」（`apps/web/src/lib/updater.ts:206-214`）。发版本是「预期交付五端」的场景，静默少一端属于本次要消灭的同一类问题（静默降级），`::notice::` 在 run 摘要里不够显眼。
-   - 建议：至少把 `::notice::` 提升为 `::warning::`；更严格的做法是 tag 触发时直接 `exit 1`（失败信息里指明是 secrets 未配置），把「要不要出 Android 包」变成显式决策。
+1. ~~**密钥缺失时静默丢掉 Android 交付物**~~
+   - 位置：`.github/workflows/release.yml`「配置 Android 签名」步骤
+   - 描述（原始）：secrets 缺失或被误删时，job 成功、无 artifact、`latest.json` 无 `android` 段；Android 端「检查更新」会得到「已是最新版本」（`apps/web/src/lib/updater.ts:206-214`）。发版本是「预期交付五端」的场景，静默少一端属于本次要消灭的同一类问题（静默降级）。
+   - **已修复（2026-09-16，采纳严格方案）**：改为缺任一 Secret 即 `::error::` + `exit 1` 并列出缺哪些，`signed` 输出与随之的 `if:` 一并移除；`latest.json` 的缺 APK 分支降级为纯防御路径，文案升为 `::warning::`。文档（`ANDROID_SIGNING.md` / `README.md` / `plan.md`）同步说明与 iOS 软跳过行为的有意差异。
 2. **`keystore.properties` 缺键时报错不可读**
    - 位置：`apps/client/gen/android/app/build.gradle.kts:42-45`
    - 描述：`keystoreProperties["keyAlias"] as String` 在缺键或拼错时会抛 `TypeCastException`/`NullPointerException`，堆栈里看不出是哪个键、哪个文件有问题。

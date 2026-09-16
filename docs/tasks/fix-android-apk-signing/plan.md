@@ -36,7 +36,7 @@
 `release.yml` 的 Android job：
 
 - 新增「配置 Android 签名」步骤：从 `ANDROID_KEYSTORE_BASE64` 解码出 keystore 到 `$RUNNER_TEMP`，写入 `apps/client/gen/android/keystore.properties`（`password` / `keyAlias` / `storeFile`），并输出 `signed=true`；
-- 三个 Secret 任一缺失时输出 `signed=false` 并打印 notice（与 iOS 未配置签名时跳过 ipa 的行为对齐），跳过 build；删除那四个无效的 `TAURI_ANDROID_KEYSTORE_*`。
+- 三个 Secret 任一缺失时**直接失败**并列出缺哪些（不静默跳过——跳过会让 Release 少一个端且 Android 端显示「已是最新版本」，属于静默降级；与 iOS 的软跳过行为有意不同）；同时删除那四个无效的 `TAURI_ANDROID_KEYSTORE_*`。
 
 ### 3. 未签名包 fail-loud，绝不发布
 

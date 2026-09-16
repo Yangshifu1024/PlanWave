@@ -100,7 +100,11 @@ gh secret set ANDROID_KEY_ALIAS -R <owner>/<repo>   # 例：planwave
 
 `release.yml` 的 Android job 流程：**配置 Android 签名**（解码 keystore → 写 `keystore.properties`）→ **Tauri android build** → **校验 APK 已签名**（恰好 1 个产物、文件名不含 `unsigned`、且含 v1（`META-INF/*.RSA|DSA|EC`）或 v2/v3（`APK Sig Block 42`）签名）→ 上传产物。
 
-未配置这三个 Secret 时：打印 notice、跳过 APK 打包，`latest.json` 不含 `android` 段（不会发布装不上的包）。
+未配置这三个 Secret 时：**CI 直接失败**（报「缺少 Secrets：…」），不会产出 Release。
+
+> 为什么不「跳过 APK 继续发版」：那样 Release 会少一个端，而 Android 端检查更新拿到不带
+> `android` 段的 `latest.json` 会显示「已是最新版本」，用户完全无感知——静默降级比流水线红更糟。
+> 确实要出一个不含 Android 包的 Release 时，请显式移除该 job。
 
 ---
 
