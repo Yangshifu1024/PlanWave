@@ -35,3 +35,7 @@ futures-util = "0.3"
 sha2 = "0.10"
 jni = "0.21"
 ndk-context = "0.1"
+# tauri 在 dev 下为 `tauri://` 协议处理器构建 reqwest 客户端时需要 rustls crypto
+# provider（tauri 2.11.x 只在 https devUrl 分支安装它）。版本与 features 与上游 tauri
+# 自身的声明一致，避免引入第二个 provider（aws-lc-rs）。
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
