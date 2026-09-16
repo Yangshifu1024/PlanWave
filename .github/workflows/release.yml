@@ -3,6 +3,8 @@
 # - 五端客户端（Windows / macOS / Linux / Android / iOS）打包并上传 GitHub Release
 # - macOS / iOS 签名与公证：见 docs/APPLE_SIGNING.md（配置对应 Secrets 即可；
 #   未配置时对应平台自动跳过签名，产物仍会上传）
+# - Android APK 签名：见 docs/ANDROID_SIGNING.md（未配置 Secrets 直接失败，
+#   也绝不发布未签名包——未签名 APK 无法安装）
 # - 桌面自动更新：配置 TAURI_SIGNING_PRIVATE_KEY(_PASSWORD) 后（见 docs/AUTO_UPDATE.md），
 #   桌面包带 minisign 签名并生成 latest.json 更新清单；未配置时自动跳过
 name: Release
@@ -364,17 +366,68 @@ jobs:
           tauri.android.versionCode=${CODE}
           EOF
           cat apps/client/gen/android/app/tauri.properties
-      - name: Tauri android build（apk）
+      # 签名走 Tauri 官方方式：把 keystore 与 keystore.properties 落到 gen/android/，
+      # 由 app/build.gradle.kts 的 signingConfigs 读取。注意并没有
+      # TAURI_ANDROID_KEYSTORE_* 这类环境变量（不是 Tauri 的功能，曾因此静默出未签名包）。
+      - name: 配置 Android 签名
         env:
-          TAURI_ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/planwave.keystore
-          TAURI_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          TAURI_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          TAURI_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
-          if [ -n "$TAURI_ANDROID_KEYSTORE_PASSWORD" ]; then
-            echo -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode -o "$TAURI_ANDROID_KEYSTORE_PATH"
+          MISSING=""
+          [ -n "$ANDROID_KEYSTORE_BASE64" ] || MISSING="${MISSING:+$MISSING }ANDROID_KEYSTORE_BASE64"
+          [ -n "$ANDROID_KEYSTORE_PASSWORD" ] || MISSING="${MISSING:+$MISSING }ANDROID_KEYSTORE_PASSWORD"
+          [ -n "$ANDROID_KEY_ALIAS" ] || MISSING="${MISSING:+$MISSING }ANDROID_KEY_ALIAS"
+          # 缺 Secret 就失败，不静默跳过：跳过会让 Release 少一个端，Android 端检查更新还会
+          # 显示「已是最新版本」，用户毫无感知——正是本次修复要消灭的静默降级。
+          # 确实不要 Android 包时，请显式删掉本 job 与 release job 的 needs/android 产物处理。
+          if [ -n "$MISSING" ]; then
+            echo "::error::缺少 Secrets：${MISSING}（配置见 docs/ANDROID_SIGNING.md）"
+            exit 1
           fi
-          pnpm --filter @planwave/client exec tauri android build --apk --config tauri.ci.conf.json
+          KEYSTORE="$RUNNER_TEMP/planwave.keystore"
+          echo -n "$ANDROID_KEYSTORE_BASE64" | base64 --decode -o "$KEYSTORE"
+          cat > apps/client/gen/android/keystore.properties <<EOF
+          password=${ANDROID_KEYSTORE_PASSWORD}
+          keyAlias=${ANDROID_KEY_ALIAS}
+          storeFile=${KEYSTORE}
+          EOF
+      - name: Tauri android build（apk）
+        run: pnpm --filter @planwave/client exec tauri android build --apk --config tauri.ci.conf.json
+      # 未签名 APK 装不上（解析失败：安装包没有签名文件），宁可让流水线红也不发布
+      - name: 校验 APK 已签名
+        run: |
+          set -- apps/client/gen/android/app/build/outputs/apk/universal/release/*.apk
+          if [ ! -f "$1" ]; then
+            echo "::error::未找到 universal APK：$*"
+            exit 1
+          fi
+          if [ "$#" -ne 1 ]; then
+            echo "::error::期望恰好 1 个 universal APK，实际 $# 个：$*"
+            exit 1
+          fi
+          APK="$1"
+          echo "产物: ${APK}"
+          case "$APK" in
+            *unsigned*) echo "::error::APK 未签名：${APK}"; exit 1 ;;
+          esac
+          # v2/v3 签名在 APK Signing Block（unzip 看不到证书），v1 签名在 META-INF/ 下留
+          # .RSA/.DSA/.EC。任一命中即算已签名——只认 v2 会在 AGP 关闭 v2 时误杀构建。
+          SIG=""
+          if grep -qa "APK Sig Block 42" "$APK"; then
+            SIG="v2/v3"
+          else
+            LISTING=$(unzip -l "$APK" 2>/dev/null || true)
+            case "$LISTING" in
+              *META-INF/*.RSA*|*META-INF/*.DSA*|*META-INF/*.EC*) SIG="v1" ;;
+            esac
+          fi
+          if [ -z "$SIG" ]; then
+            echo "::error::APK 未找到 v1/v2/v3 签名：${APK}"
+            exit 1
+          fi
+          echo "签名校验通过（${SIG}）: ${APK}"
       - uses: actions/upload-artifact@v7
         with:
           name: client-android
@@ -475,6 +528,10 @@ jobs:
             -exec cp {} upload/ \;
           for f in upload/*.apk; do
             [ -e "$f" ] || continue
+            # 兜底：一旦出现未签名 APK 就地失败，绝不改名后混进 Release
+            case "$f" in
+              *unsigned*) echo "::error::产物中存在未签名 APK：$f"; exit 1 ;;
+            esac
             mv "$f" "upload/PlanWave_${VERSION}_universal.apk"
           done
           # tauri 的 NSIS/AppImage/app.tar.gz 产物已自带版本名：目标同名时跳过 mv
@@ -524,7 +581,14 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           BASE="https://github.com/${REPO}/releases/download/v${VERSION}"
-          ARGS="--version $VERSION --apk ${BASE}/PlanWave_${VERSION}_universal.apk --apk-sha256 $(sha256sum "upload/PlanWave_${VERSION}_universal.apk" | cut -d' ' -f1) --notes-file body.md --out upload/latest.json"
+          APK="upload/PlanWave_${VERSION}_universal.apk"
+          ARGS="--version $VERSION --notes-file body.md --out upload/latest.json"
+          # 正常路径下 android job 必然产出 APK；走到 else 说明产物链路被改过，留个显眼告警
+          if [ -f "$APK" ]; then
+            ARGS="$ARGS --apk ${BASE}/PlanWave_${VERSION}_universal.apk --apk-sha256 $(sha256sum "$APK" | cut -d' ' -f1)"
+          else
+            echo "::warning::本次未产出 APK，latest.json 不含 android 段（Android 端将收不到更新）"
+          fi
           if [ "${{ needs.desktop-windows.outputs.updater }}" = "true" ]; then
             ARGS="$ARGS --win ${BASE}/PlanWave_${VERSION}_x64-setup.exe --win-sig upload/PlanWave_${VERSION}_x64-setup.exe.sig"
           fi

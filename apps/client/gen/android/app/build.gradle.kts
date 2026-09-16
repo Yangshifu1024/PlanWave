@@ -13,6 +13,17 @@ val tauriProperties = Properties().apply {
     }
 }
 
+// 签名配置由 gen/android/keystore.properties 提供（CI 从 Secrets 生成，本地手动创建）。
+// 文件缺失时不注册 release 签名配置，gradle 会产出 *-unsigned.apk——
+// release.yml 的产物校验会因此直接失败，未签名包不会被静默发布。
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val hasKeystore = keystorePropertiesFile.exists()
+val keystoreProperties = Properties().apply {
+    if (hasKeystore) {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
+}
+
 android {
     compileSdk = 36
     buildToolsVersion = "36.0.0"
@@ -24,6 +35,16 @@ android {
         targetSdk = 36
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
+    }
+    signingConfigs {
+        if (hasKeystore) {
+            create("release") {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["password"] as String
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["password"] as String
+            }
+        }
     }
     buildTypes {
         getByName("debug") {
@@ -38,6 +59,9 @@ android {
             }
         }
         getByName("release") {
+            if (hasKeystore) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = true
             proguardFiles(
                 *fileTree(".") { include("**/*.pro") }
