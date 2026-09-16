@@ -396,21 +396,36 @@ jobs:
       - name: 校验 APK 已签名
         if: steps.signing.outputs.signed == 'true'
         run: |
-          mapfile -t APKS < <(ls apps/client/gen/android/app/build/outputs/apk/universal/release/*.apk)
-          if [ "${#APKS[@]}" -ne 1 ]; then
-            echo "::error::期望恰好 1 个 universal APK，实际 ${#APKS[@]} 个：${APKS[*]}"
+          set -- apps/client/gen/android/app/build/outputs/apk/universal/release/*.apk
+          if [ ! -f "$1" ]; then
+            echo "::error::未找到 universal APK：$*"
             exit 1
           fi
-          APK="${APKS[0]}"
+          if [ "$#" -ne 1 ]; then
+            echo "::error::期望恰好 1 个 universal APK，实际 $# 个：$*"
+            exit 1
+          fi
+          APK="$1"
           echo "产物: ${APK}"
           case "$APK" in
             *unsigned*) echo "::error::APK 未签名：${APK}"; exit 1 ;;
           esac
-          # v2/v3 签名位于 APK Signing Block（unzip 看不到 META-INF 证书），按魔数判定
-          if ! grep -qa "APK Sig Block 42" "$APK"; then
-            echo "::error::APK 缺少 v2/v3 签名块：${APK}"
+          # v2/v3 签名在 APK Signing Block（unzip 看不到证书），v1 签名在 META-INF/ 下留
+          # .RSA/.DSA/.EC。任一命中即算已签名——只认 v2 会在 AGP 关闭 v2 时误杀构建。
+          SIG=""
+          if grep -qa "APK Sig Block 42" "$APK"; then
+            SIG="v2/v3"
+          else
+            LISTING=$(unzip -l "$APK" 2>/dev/null || true)
+            case "$LISTING" in
+              *META-INF/*.RSA*|*META-INF/*.DSA*|*META-INF/*.EC*) SIG="v1" ;;
+            esac
+          fi
+          if [ -z "$SIG" ]; then
+            echo "::error::APK 未找到 v1/v2/v3 签名：${APK}"
             exit 1
           fi
+          echo "签名校验通过（${SIG}）: ${APK}"
       - uses: actions/upload-artifact@v7
         if: steps.signing.outputs.signed == 'true'
         with:

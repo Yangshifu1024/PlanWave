@@ -98,7 +98,7 @@ gh secret set ANDROID_KEYSTORE_PASSWORD -R <owner>/<repo>
 gh secret set ANDROID_KEY_ALIAS -R <owner>/<repo>   # 例：planwave
 ```
 
-`release.yml` 的 Android job 流程：**配置 Android 签名**（解码 keystore → 写 `keystore.properties`）→ **Tauri android build** → **校验 APK 已签名**（恰好 1 个产物、文件名不含 `unsigned`、含 v2/v3 签名块）→ 上传产物。
+`release.yml` 的 Android job 流程：**配置 Android 签名**（解码 keystore → 写 `keystore.properties`）→ **Tauri android build** → **校验 APK 已签名**（恰好 1 个产物、文件名不含 `unsigned`、且含 v1（`META-INF/*.RSA|DSA|EC`）或 v2/v3（`APK Sig Block 42`）签名）→ 上传产物。
 
 未配置这三个 Secret 时：打印 notice、跳过 APK 打包，`latest.json` 不含 `android` 段（不会发布装不上的包）。
 
@@ -123,4 +123,4 @@ apksigner verify --verbose PlanWave_${VERSION}_universal.apk
 | 解析失败：安装包没有签名文件 | 产物是 `*-unsigned.apk`（未配签名）。检查 `keystore.properties` 是否存在、Secret 是否齐全 |
 | `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | 待装包与已安装包签名不同（换过 keystore / 装过 debug 包）。卸载旧包后重装；之后所有版本必须用同一 keystore |
 | `App not installed` 且已装更高 `versionCode` | Release 的 `versionCode` 由 tag 推导（`major*1e6 + minor*1e3 + patch`），需发更高的 tag |
-| CI 报「APK 缺少 v2/v3 签名块」 | 签名配置未生效：确认 `keystore.properties` 已生成且路径正确、Secret 内容未被换行/转义破坏 |
+| CI 报「APK 未找到 v1/v2/v3 签名」 | 签名配置未生效：确认 `keystore.properties` 已生成且路径正确、Secret 内容未被换行/转义破坏 |

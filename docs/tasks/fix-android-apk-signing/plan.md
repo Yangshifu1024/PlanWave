@@ -40,7 +40,7 @@
 
 ### 3. 未签名包 fail-loud，绝不发布
 
-- Android job 新增「校验 APK 已签名」步骤：universal 产物必须恰好 1 个、文件名不含 `unsigned`、二进制含 `APK Sig Block 42`（v2/v3 签名在 APK Signing Block 中，`unzip` 看不到证书），任一不满足即报错退出；
+- Android job 新增「校验 APK 已签名」步骤：universal 产物必须恰好 1 个、文件名不含 `unsigned`、且命中 v1（`META-INF/*.RSA|DSA|EC`）或 v2/v3（`APK Sig Block 42`，签名在 APK Signing Block 中，`unzip` 看不到证书）签名，任一不满足即报错退出；只认 v2 会在 AGP 关闭 v2 时误杀构建，故两者取或；
 - 「整理产物」步骤加兜底：发现文件名含 `unsigned` 的 APK 就地失败，不进入 Release；
 - `scripts/gen-latest-json.mjs`：`--apk` / `--apk-sha256` 改为可选且必须成对，未提供时 `latest.json` 省略 `android` 段（前端 `apps/web/src/lib/updater.ts` 已对 `manifest.android` 缺失做判空，无需改动）；`release.yml` 仅在 APK 文件存在时传入这两个参数。
 
