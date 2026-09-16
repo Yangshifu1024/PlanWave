@@ -140,6 +140,7 @@ Trigger: development done, new code awaiting merge
 - `apps/web/src/styles.css` must import `@heroui/styles` directly; importing it through `@heroui/react` leaves an unresolved `@import` and breaks the build.
 - Titlebar asymmetry: macOS uses `titleBarStyle: "Overlay"` from `tauri.conf.json`; Windows gets a frameless window via `WindowControls.tsx` calling `setDecorations(false)` with custom min/max/close buttons.
 - Android builds: `PLANWAVE_CN_MIRROR=1` enables Aliyun Maven mirrors (off by default — aliyun 502s hard-fail CI).
+- Android APK signing comes only from `gen/android/keystore.properties` + the `signingConfigs` block in `app/build.gradle.kts` — there is no `TAURI_ANDROID_KEYSTORE_*` env var; unsigned APKs fail CI (see `docs/ANDROID_SIGNING.md`).
 - No `DATABASE_URL` ⇒ in-memory store, wiped on restart. That's a feature for local dev/E2E, not a bug.
 
 ## Further documentation
@@ -148,4 +149,5 @@ Trigger: development done, new code awaiting merge
 - `docs/CODE_TOUR.md` — read this before touching sync or data-layer code
 - `deploy/README.md` — deployment manual (GHCR images, MySQL, Caddy `/api` strip pitfalls)
 - `docs/APPLE_SIGNING.md` — macOS signing/notarization + iOS signing
+- `docs/ANDROID_SIGNING.md` — Android APK keystore setup (local + CI Secrets)
 - `.env.example` — all server environment variables

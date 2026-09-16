@@ -5,7 +5,8 @@
 //! - `platforms`：按可用签名生成条目（windows-x86_64 / darwin-aarch64 /
 //!   darwin-x86_64 / linux-x86_64），signature 为 minisign 签名文件内容，
 //!   url 为 Release 资产直链；
-//! - `android`：自定义段（Tauri 忽略未知键），供 Android 端应用内更新读取。
+//! - `android`：自定义段（Tauri 忽略未知键），供 Android 端应用内更新读取；
+//!   未提供 --apk/--apk-sha256 时整个段省略（如未配置 Android 签名 Secrets）。
 //!
 //! 用法见 release.yml 的调用示例；未提供 URL+签名的平台不会出现在清单里。
 
@@ -29,11 +30,15 @@ function opt(name) {
 const version = arg("version");
 const out = arg("out");
 const notesFile = arg("notes-file");
-const apk = arg("apk");
-const apkSha256 = arg("apk-sha256");
+const apk = opt("apk");
+const apkSha256 = opt("apk-sha256");
 const notes = readFileSync(notesFile, "utf-8").trim();
 
-if (!/^[0-9a-f]{64}$/.test(apkSha256.toLowerCase())) {
+if ((apk === undefined) !== (apkSha256 === undefined)) {
+  console.error("--apk 与 --apk-sha256 必须成对提供");
+  process.exit(1);
+}
+if (apkSha256 !== undefined && !/^[0-9a-f]{64}$/.test(apkSha256.toLowerCase())) {
   console.error(`--apk-sha256 必须是 64 位十六进制 sha256，收到: ${apkSha256}`);
   process.exit(1);
 }
@@ -69,13 +74,16 @@ const manifest = {
   notes,
   pub_date: new Date().toISOString().replace(/\.\d+Z$/, "Z"),
   platforms,
-  android: {
+};
+
+if (apk !== undefined && apkSha256 !== undefined) {
+  manifest.android = {
     version,
     url: apk,
     sha256: apkSha256.toLowerCase(),
     notes,
-  },
-};
+  };
+}
 
 writeFileSync(out, `${JSON.stringify(manifest, null, 2)}\n`);
 console.log(

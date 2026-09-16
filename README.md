@@ -112,7 +112,7 @@ pnpm build:android  # Android APK
 pnpm build:ios      # iOS ipa（需 macOS + Xcode）
 ```
 
-macOS / iOS 的签名与公证配置见 [docs/APPLE_SIGNING.md](docs/APPLE_SIGNING.md)（配好 Secrets 即可在 CI 出签名包）。
+macOS / iOS 的签名与公证配置见 [docs/APPLE_SIGNING.md](docs/APPLE_SIGNING.md)，Android APK 签名的见 [docs/ANDROID_SIGNING.md](docs/ANDROID_SIGNING.md)（配好 Secrets 即可在 CI 出签名包；未配置 Android 签名时跳过 APK，不会发布装不上的未签名包）。
 
 ## 测试矩阵
 
