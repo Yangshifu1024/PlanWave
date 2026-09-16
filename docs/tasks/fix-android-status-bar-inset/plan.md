@@ -54,10 +54,11 @@ ViewCompat.setOnApplyWindowInsetsListener(content) { view, insets ->
 
 已执行（静态）：
 
-- 真实 Kotlin 编译：`./gradlew :app:compileUniversalDebugKotlin`（本机 JDK 17 + Android SDK）。**结果：失败，但与本改动无关** —— 报错指向旧包名残留 `com/planwave/todo/generated/Logger.kt` 的 `BuildConfig`，以及当前包名缺少 wry/tauri 生成的 `TauriActivity`（生成源码目录被 `app/.gitignore` 忽略，本机未跑过 `tauri android build`）。本次新增的三个 import 在真实编译中未产生 unresolved 报错，说明 `androidx.core` 在编译类路径上。
+- 真实 Kotlin 编译：`./gradlew :app:compileArm64DebugKotlin`（本机 JDK 17 + Android SDK 36）—— **BUILD SUCCESSFUL**，产物 `app/build/tmp/kotlin-classes/arm64Debug/xyz/yangshifu/planwave/MainActivity.class`。首次编译曾失败，原因是两个与本改动无关的环境问题：① 应用 identifier 改名后遗留的旧包名目录 `app/src/main/java/com/planwave/todo/generated/`（未跟踪、被 gitignore，但仍在 source set 中参与编译，`Logger.kt` 引用了不存在的旧 `BuildConfig`）；② 当前包名的 `generated/*.kt` 尚未生成（首次跑 `tauri android dev|build` 后已生成）。删除①后编译通过。
 - API 签名：`javap` 校验 `androidx.core:core:1.13.1` —— `ViewCompat.setOnApplyWindowInsetsListener(View, OnApplyWindowInsetsListener)`、`WindowInsetsCompat.getInsets(int) : androidx.core.graphics.Insets`、`WindowInsetsCompat$Type.systemBars()/displayCutout()`、`Insets.left/top/right/bottom` 公有 final 字段。
+- 回归：`pnpm typecheck`（tsc --noEmit）与 `eslint` 均通过；未触碰 Rust/WASM 与服务端代码。
 
-结论口径：本机未做「构建通过 + 真机目视」的闭环，按决策交由 release 流水线（`.github/workflows/release.yml:402` 的 `tauri android build --apk` 会重新生成工程并编译本文件）与真机验证。
+结论口径：**编译侧已验证完成**；仅剩真机目视确认（本机无模拟器调试会话）。
 
 真机验证清单：
 
@@ -83,4 +84,4 @@ git checkout -- apps/client/gen/android/app/src/main/java/xyz/yangshifu/planwave
 ## 未决 / 遗留
 
 - 状态栏区域在加 padding 后显示的是主题 windowBackground 底色，可能与 Web 顶栏色（`#fafafa`）存在色带；如观感不理想，可考虑 Web 层 `env(safe-area-inset-*)` 方案（与 iOS 统一，但需验证 Android WebView 的 env() 取值）——两者**绝不能同时存在**。
-- Android 侧无任何自动化门禁（`app/src/androidTest/` 不存在，PR CI 不编译 Kotlin，唯一编译发生在发版流水线）。本任务的验证闭环依赖人工真机确认。
+- Android 侧无自动化门禁（`app/src/androidTest/` 不存在，PR CI 不编译 Kotlin）；本地已用 `gradlew :app:compileArm64DebugKotlin` 补足编译验证，视觉验证仍需人工真机确认。

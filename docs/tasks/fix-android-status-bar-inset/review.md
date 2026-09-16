@@ -7,7 +7,7 @@
 
 ## 结论
 
-**有条件通过**：🔴 3 项。其中 2 项（文档事实错误、任务文档缺失）已在本次评审后当场闭环；第 3 项（真实 Android 构建 + 真机目视的验证闭环）经决策**显式接受为遗留项**，转交 release 流水线与真机验证（理由见下文「遗留项」）。Kotlin 逻辑本身无需返工。
+**有条件通过**：🔴 3 项。其中 2 项（文档事实错误、任务文档缺失）已在本次评审后当场闭环；第 3 项（验证闭环）已在后续**完成编译侧**（本地 `gradlew :app:compileArm64DebugKotlin` BUILD SUCCESSFUL），仅剩真机目视确认，仍列为遗留项（见下文「遗留项」）。Kotlin 逻辑本身无需返工。
 
 ## ✅ 优点
 
@@ -25,10 +25,10 @@
    - 原表述为「`tauri android init` may overwrite it」。经上游源码核实（`tauri-apps/tauri` `tauri-cli-v2.11.4` 的 `crates/tauri-cli/src/mobile/android/project.rs::generate_out_file`）：仅当文件名是 `BuildTask.kt` 时才 `truncate(true)` 无条件重写，其余文件走 `else if !path.exists()` 才创建 —— 即**已存在的 `MainActivity.kt` 不会被覆盖**，只有删除/重建 `gen/android` 才会丢。
    - 处置：改为准确表述，并补一条本地构建前置条件（需先跑 `tauri android dev|build` 生成被 gitignore 的 `<package>/generated/*.kt`，否则 `gradlew` 报 `Unresolved reference: TauriActivity`）。
 
-2. **缺少验证闭环（构建 + 真机）** —— 显式接受的遗留项
-   - 事实：`apps/client/gen/android/app/src/androidTest/` 不存在（`build.gradle.kts` 里的 espresso/junit 是模板遗留），`pnpm test:*` 全在 Rust/Web/E2E 侧，PR CI 不编译 Android Kotlin，唯一真实编译发生在 `.github/workflows/release.yml:402` 的 `tauri android build --apk`。本机 `gradlew :app:compileUniversalDebugKotlin` 已实际执行，但被既有环境问题阻断（见 plan.md「验证」），改由 CI 与真机兜底。
-   - 已完成的替代验证：真实编译证明 `androidx.core` 在编译类路径（新增 import 无 unresolved）；`javap` 逐项校验所用 API 签名与 `Insets` 公有字段。
-   - 「验证完成」的定义（供真机执行者对照）：① release 流水线 Android job 编译打包成功；② 真机上竖屏顶部工具栏不被状态栏压住且留白恰为状态栏高度；③ 横屏刘海侧不遮挡；④ API ≤ 34 设备无双份留白；⑤ 旋转 / 深色切换后正常。
+2. **缺少验证闭环（构建 + 真机）** —— 编译侧已闭环，真机侧仍为遗留项
+   - 事实：`apps/client/gen/android/app/src/androidTest/` 不存在（`build.gradle.kts` 里的 espresso/junit 是模板遗留），`pnpm test:*` 全在 Rust/Web/E2E 侧，PR CI 不编译 Android Kotlin。
+   - **补充（评审后）：本地 `./gradlew :app:compileArm64DebugKotlin` 已 BUILD SUCCESSFUL**，产出 `MainActivity.class`；首次失败的两个原因均为环境残留（改名遗留的旧包名 `com/planwave/todo/generated/` 未跟踪目录仍参与编译；当前包名 `generated/*.kt` 尚未生成），与本改动无关，清理后通过。
+   - 因此本项只剩**真机目视**未做。验收定义：① 竖屏顶部工具栏不被状态栏压住且留白恰为状态栏高度；② 横屏刘海侧不遮挡；③ API ≤ 34 设备无双份留白；④ 旋转 / 深色切换后正常；⑤ 底部手势条不压住列表末行。
 
 3. **缺陷流程要求的任务文档缺失** —— 已修复
    - `AGENTS.md` 的缺陷流程（第 108-116 行）要求修复方案落 `docs/tasks/<fix-task-name>/plan.md`，既有 fix 任务均遵守；本次原缺。
