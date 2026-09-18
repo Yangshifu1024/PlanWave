@@ -11,9 +11,11 @@ import {
 } from "@heroui/react";
 import type { RecurrenceFreq, RecurrenceRule, TaskRecord } from "../types";
 import { actions, useApp } from "../state/store";
-import { isDesktopApp } from "../lib/platform";
 import { fromDateInput, toDateInput } from "../lib/dates";
 import { recurrenceLabel } from "../lib/recurrence";
+import { AdaptivePane } from "./shell/AdaptivePane";
+import { DateField } from "./ui/DateField";
+import { NativeSelect } from "./ui/NativeSelect";
 
 export const PRIORITIES: { value: number; label: string }[] = [
   { value: 0, label: "无" },
@@ -106,19 +108,14 @@ export function TaskDetail() {
 
   if (!task || !detailOpen) return null;
   return (
-    <div
-      className="fixed inset-0 z-40 bg-white dark:bg-zinc-900 md:static md:z-auto md:w-80 md:shrink-0 md:border-l md:border-zinc-200 md:dark:border-zinc-800"
-      data-testid="task-detail"
-    >
-      {task && (
-        <DetailBody
-          key={task.id}
-          task={task}
-          projects={projects.filter((p) => !p.deleted)}
-          onClose={() => actions.closeDetail()}
-        />
-      )}
-    </div>
+    <AdaptivePane role="detail" open onClose={() => actions.closeDetail()} testId="task-detail">
+      <DetailBody
+        key={task.id}
+        task={task}
+        projects={projects.filter((p) => !p.deleted)}
+        onClose={() => actions.closeDetail()}
+      />
+    </AdaptivePane>
   );
 }
 
@@ -162,18 +159,10 @@ function DetailBody({
 
   return (
     <div className="relative flex h-full flex-col gap-4 overflow-y-auto p-5">
-      {/* 桌面端自绘标题栏：详情列顶部拖拽区（Windows 窗口控制按钮落在这上方），滚动时吸顶 */}
-      {isDesktopApp && (
-        <div
-          data-tauri-drag-region
-          className="sticky top-0 z-10 -mx-5 -mt-5 h-9 shrink-0 bg-white dark:bg-zinc-900"
-          aria-hidden
-        />
-      )}
       <div className="flex items-center justify-between">
         <button
           onClick={onClose}
-          className="rounded-lg px-2 py-1 text-sm text-zinc-400 hover:bg-zinc-100 md:hidden dark:hover:bg-zinc-800"
+          className="rounded-lg px-2 py-1 text-sm text-fg-subtle hover:bg-pw-hover md:hidden"
         >
           ← 返回
         </button>
@@ -192,7 +181,7 @@ function DetailBody({
                 variant="ghost"
                 onPress={() => actions.openPurgeConfirm([task.id])}
                 data-testid="detail-purge"
-                className="text-zinc-400 hover:text-red-500"
+                className="text-fg-subtle hover:text-red-500"
               >
                 彻底删除
               </Button>
@@ -220,7 +209,7 @@ function DetailBody({
                   })
                 }
                 data-testid="detail-delete"
-                className="text-zinc-400 hover:text-red-500"
+                className="text-fg-subtle hover:text-red-500"
               >
                 删除
               </Button>
@@ -228,7 +217,7 @@ function DetailBody({
           )}
           <button
             onClick={onClose}
-            className="hidden rounded-lg px-2 py-1 text-sm text-zinc-400 hover:bg-zinc-100 md:block dark:hover:bg-zinc-800"
+            className="hidden rounded-lg px-2 py-1 text-sm text-fg-subtle hover:bg-pw-hover md:block"
             aria-label="关闭详情"
           >
             ×
@@ -270,20 +259,18 @@ function DetailBody({
 
       <Field label="截止日期">
         <div className="flex w-full items-center gap-2">
-          <input
-            type="date"
+          <DateField
             value={draft.due}
-            onChange={(e) => setDraft({ ...draft, due: e.target.value })}
-            data-testid="detail-due"
-            aria-label="截止日期"
-            className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 [color-scheme:light] dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 dark:[color-scheme:dark]"
+            onChange={(due) => setDraft({ ...draft, due })}
+            testId="detail-due"
+            ariaLabel="截止日期"
           />
           {draft.due !== "" && (
             <Button
               size="sm"
               variant="ghost"
               onPress={() => setDraft({ ...draft, due: "" })}
-              className="shrink-0 text-xs text-zinc-400"
+              className="shrink-0 text-xs text-fg-subtle"
             >
               清除
             </Button>
@@ -307,24 +294,24 @@ function DetailBody({
       </Field>
 
       <Field label="重复">
-        <select
+        <NativeSelect
           value={preset}
-          onChange={(e) =>
-            setDraft({ ...draft, recurrence: applyPreset(draft.recurrence, e.target.value) })
+          onChange={(value) =>
+            setDraft({ ...draft, recurrence: applyPreset(draft.recurrence, value) })
           }
-          data-testid="detail-recurrence"
-          aria-label="重复规则"
-          className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 [color-scheme:light] dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 dark:[color-scheme:dark]"
+          testId="detail-recurrence"
+          ariaLabel="重复规则"
+          className="w-full"
         >
           {RECURRENCE_PRESETS.map((p) => (
             <option key={p.value} value={p.value}>
               {p.value === "custom" && rule ? `自定义（${recurrenceLabel(rule)}）` : p.label}
             </option>
           ))}
-        </select>
+        </NativeSelect>
         {preset === "custom" && rule && (
-          <div className="flex flex-wrap items-center gap-2 rounded-xl bg-zinc-50 p-3 dark:bg-zinc-800/60">
-            <span className="text-xs text-zinc-400">每</span>
+          <div className="flex flex-wrap items-center gap-2 rounded-xl bg-pw-surface-2 p-3">
+            <span className="text-xs text-fg-subtle">每</span>
             <input
               type="number"
               min={1}
@@ -340,7 +327,7 @@ function DetailBody({
               }
               data-testid="detail-recurrence-interval"
               aria-label="重复间隔"
-              className="w-16 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-sm [color-scheme:light] dark:border-zinc-700 dark:bg-zinc-800 dark:[color-scheme:dark]"
+              className="w-16 rounded-lg border border-pw-border bg-pw-surface px-2 py-1 text-sm [color-scheme:light] dark:[color-scheme:dark]"
             />
             <select
               value={rule.freq}
@@ -351,7 +338,7 @@ function DetailBody({
                 })
               }
               aria-label="重复单位"
-              className="rounded-lg border border-zinc-200 bg-white px-2 py-1 text-sm [color-scheme:light] dark:border-zinc-700 dark:bg-zinc-800 dark:[color-scheme:dark]"
+              className="rounded-lg border border-pw-border bg-pw-surface px-2 py-1 text-sm [color-scheme:light] dark:[color-scheme:dark]"
             >
               {FREQ_OPTIONS.map((f) => (
                 <option key={f.value} value={f.value}>
@@ -370,7 +357,7 @@ function DetailBody({
                       className={`size-7 rounded-full text-xs transition ${
                         active
                           ? "bg-blue-500 text-white"
-                          : "bg-zinc-200 text-zinc-500 hover:bg-zinc-300 dark:bg-zinc-700 dark:text-zinc-300"
+                          : "bg-pw-hover text-fg-muted hover:bg-pw-selected"
                       }`}
                       aria-pressed={active}
                       aria-label={`每周${label}`}
@@ -436,7 +423,7 @@ function DetailBody({
             {children.map((c) => (
               <li
                 key={c.id}
-                className="group/sub flex items-center gap-2 rounded-lg px-1 py-1 hover:bg-zinc-50 dark:hover:bg-zinc-800/60"
+                className="group/sub flex items-center gap-2 rounded-lg px-1 py-1 hover:bg-pw-hover"
               >
                 <span onClick={(e) => e.stopPropagation()}>
                   <Checkbox
@@ -461,7 +448,7 @@ function DetailBody({
                 </span>
                 <button
                   className={`min-w-0 flex-1 cursor-pointer truncate text-left text-sm ${
-                    c.completed ? "text-zinc-400 line-through" : ""
+                    c.completed ? "text-fg-subtle line-through" : ""
                   }`}
                   onClick={() => actions.selectTask(c.id)}
                   data-testid={`subtask-open-${c.title}`}
@@ -480,7 +467,7 @@ function DetailBody({
                     })
                   }
                   aria-label="删除子任务"
-                  className="shrink-0 text-zinc-400 opacity-0 transition hover:text-red-500 group-hover/sub:opacity-100"
+                  className="shrink-0 text-fg-subtle opacity-0 transition hover:text-red-500 group-hover/sub:opacity-100 coarse:opacity-100"
                 >
                   <svg viewBox="0 0 16 16" className="size-4" fill="none" aria-hidden>
                     <path
@@ -530,7 +517,7 @@ function DetailBody({
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <div className="text-xs font-medium text-zinc-400">{label}</div>
+      <div className="text-xs font-medium text-fg-subtle">{label}</div>
       <div className="flex flex-col gap-2">{children}</div>
     </div>
   );

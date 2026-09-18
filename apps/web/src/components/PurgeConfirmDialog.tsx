@@ -1,5 +1,6 @@
 import { Button, Modal } from "@heroui/react";
 import { actions, useApp } from "../state/store";
+import { useShellMode } from "../lib/useShellMode";
 import { collectDescendants } from "../lib/purge";
 
 /** 彻底删除确认弹框：展示级联后的总条数与子任务数；
@@ -7,6 +8,7 @@ import { collectDescendants } from "../lib/purge";
 export function PurgeConfirmDialog() {
   const ids = useApp((s) => s.purgeConfirm);
   const tasks = useApp((s) => s.tasks);
+  const bottom = useShellMode() === "compact";
   if (!ids || ids.length === 0) return null;
   // 级联展示：彻底删除的不只是勾选项，还有整棵后代树（含存活子任务）
   const all = collectDescendants(tasks, ids);
@@ -20,7 +22,7 @@ export function PurgeConfirmDialog() {
       }}
     >
       <Modal.Backdrop>
-        <Modal.Container placement="center">
+        <Modal.Container placement={bottom ? "bottom" : "center"}>
           <Modal.Dialog data-testid="purge-modal">
             <form
               onSubmit={(e) => {

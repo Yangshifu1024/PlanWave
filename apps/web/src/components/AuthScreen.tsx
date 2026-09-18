@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Button, Input } from "@heroui/react";
 import { actions, useApp } from "../state/store";
 import { DEFAULT_API_BASE, getStoredApiBase } from "../lib/platform";
-import { Logo } from "../App";
+import { Logo } from "./ui/Logo";
 
 type ServerCheck =
   | { state: "idle" }
@@ -37,9 +37,7 @@ export function AuthScreen() {
   const hasAccount = useApp((s) => s.hasAccount);
   const authError = useApp((s) => s.authError);
   // 服务器地址在第一位：探测通过前凭据输入保持锁定
-  const [server, setServer] = useState(
-    () => getStoredApiBase() ?? DEFAULT_API_BASE,
-  );
+  const [server, setServer] = useState(() => getStoredApiBase() ?? DEFAULT_API_BASE);
   const [serverCheck, setServerCheck] = useState<ServerCheck>({ state: "checking" });
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -78,15 +76,15 @@ export function AuthScreen() {
   };
 
   return (
-    <div className="flex h-full items-center justify-center px-6">
+    <div className="flex h-full items-center justify-center px-6 max-md:items-start max-md:pt-[10vh]">
       <form
         onSubmit={submit}
-        className="w-full max-w-sm space-y-5 rounded-2xl bg-white p-8 shadow-sm ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-800"
+        className="w-full max-w-sm space-y-5 rounded-2xl bg-pw-surface p-8 shadow-sm ring-1 ring-pw-border max-md:shadow-none max-md:ring-0"
       >
         <div className="flex flex-col items-center gap-2">
           <Logo className="size-10 text-blue-500" />
           <h1 className="text-lg font-semibold">PlanWave</h1>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="text-sm text-fg-muted">
             {hasAccount ? "登录以同步你的任务" : "首次使用：创建唯一账号（单用户设计）"}
           </p>
         </div>
@@ -102,7 +100,7 @@ export function AuthScreen() {
             fullWidth
           />
           {serverCheck.state === "checking" && (
-            <p className="text-xs text-zinc-400" data-testid="server-check">
+            <p className="text-xs text-fg-subtle" data-testid="server-check">
               正在连接服务器…
             </p>
           )}

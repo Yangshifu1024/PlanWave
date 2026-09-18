@@ -1,9 +1,11 @@
 import { Button, Modal } from "@heroui/react";
 import { actions, useApp } from "../state/store";
+import { useShellMode } from "../lib/useShellMode";
 
 /** 通用确认弹框：退出登录/完成任务/删除任务等操作的确认门。 */
 export function AppConfirmDialog() {
   const confirm = useApp((s) => s.confirm);
+  const bottom = useShellMode() === "compact";
   if (!confirm) return null;
   return (
     <Modal
@@ -13,7 +15,7 @@ export function AppConfirmDialog() {
       }}
     >
       <Modal.Backdrop>
-        <Modal.Container placement="center">
+        <Modal.Container placement={bottom ? "bottom" : "center"}>
           <Modal.Dialog data-testid="confirm-dialog">
             <Modal.Header>
               <Modal.Heading className="text-lg font-bold">{confirm.title}</Modal.Heading>

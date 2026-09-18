@@ -2,9 +2,14 @@
    注意：必须直接引 @heroui/styles——经 @heroui/react 的占位样式文件嵌套引入
    会在构建产物中留下未解析的 @import，导致组件无样式。 */
 @import "@heroui/styles";
+/* PlanWave UI v2 设计令牌与自适应壳层几何 */
+@import "./theme/tokens.css";
 
 /* 深色模式跟随 <html> 上的 .dark class（与 HeroUI 主题的 .dark 选择器一致） */
 @custom-variant dark (&:where(.dark, .dark *));
+
+/* 触屏指针变体：用于「操作按钮常显」等粗指针适配 */
+@custom-variant coarse (@media (pointer: coarse));
 
 html,
 body,
@@ -13,7 +18,8 @@ body,
 }
 
 body {
-  @apply bg-zinc-100 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100;
+  font-family: var(--pw-font-sans);
+  @apply bg-canvas text-fg antialiased;
 }
 
 /* 细滚动条（例外：HeroUI ScrollShadow 用同机制隐藏自身滚动条，
@@ -25,4 +31,20 @@ body {
 .scroll-shadow--hide-scrollbar {
   scrollbar-width: none;
   scrollbar-color: auto;
+}
+
+/* 底部 Toast 需抬离 BottomNav + 移动端 Home 指示条 */
+.toast-region--bottom {
+  bottom: calc(0.75rem + var(--pw-nav-height) + var(--pw-safe-bottom));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

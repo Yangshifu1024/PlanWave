@@ -2,6 +2,7 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  applyPlatformAttrs,
   applyServerAddress,
   getApiBase,
   getStoredApiBase,
@@ -37,5 +38,15 @@ describe("服务器地址解析", () => {
     expect(applyServerAddress("")).toBe(true);
     expect(getStoredApiBase()).toBeNull();
     expect(getApiBase()).toBe(DEFAULT_API_BASE);
+  });
+});
+
+describe("applyPlatformAttrs", () => {
+  it("非 Tauri 环境写入 web / none / css 数据集", () => {
+    applyPlatformAttrs();
+    const { dataset } = document.documentElement;
+    expect(dataset.os).toBe("web");
+    expect(dataset.chrome).toBe("none");
+    expect(dataset.insets).toBe("css");
   });
 });

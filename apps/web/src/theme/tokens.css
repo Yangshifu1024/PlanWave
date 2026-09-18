@@ -1,0 +1,223 @@
+/* PlanWave UI v2 design tokens + adaptive shell geometry.
+   导入于 @heroui/styles 之后，且未包裹 @layer——未分层规则优先级高于
+   HeroUI 的 @layer base，因此这里的 --background/--surface 等别名稳定生效。 */
+
+:root {
+  /* 表面 */
+  --pw-bg-canvas: #f4f4f5;
+  --pw-bg-surface: #ffffff;
+  --pw-bg-surface-2: #fafafa;
+  --pw-bg-hover: rgb(24 24 27 / 0.05);
+  --pw-bg-selected: rgb(37 99 235 / 0.1);
+
+  /* 前景 */
+  --pw-fg: #18181b;
+  --pw-fg-muted: #52525b;
+  --pw-fg-subtle: #a1a1aa;
+
+  /* 边框 */
+  --pw-border: #e4e4e7;
+  --pw-border-hairline: rgb(24 24 27 / 0.08);
+
+  /* 语义色 */
+  --pw-accent: #2563eb;
+  --pw-accent-strong: #2563eb;
+  --pw-danger: #dc2626;
+  --pw-success: #16a34a;
+
+  /* 字体（中文优先的系统栈，不加载 Web 字体） */
+  --pw-font-sans:
+    "Segoe UI Variable Text", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC",
+    "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", "WenQuanYi Micro Hei", system-ui,
+    sans-serif;
+
+  /* 自动密度：细指针紧凑、粗指针（触屏）舒适 */
+  --pw-row-y: 6px;
+  --pw-hit: 28px;
+
+  /* 窗口 chrome 与安全区 */
+  --pw-safe-top: env(safe-area-inset-top, 0px);
+  --pw-safe-right: env(safe-area-inset-right, 0px);
+  --pw-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --pw-safe-left: env(safe-area-inset-left, 0px);
+  --pw-titlebar: 0px;
+  --pw-caption-w: 0px;
+  --pw-traffic-pad: 0px;
+  --pw-nav-height: 0px;
+
+  /* HeroUI 自有变量别名（不重声明其 @theme 键） */
+  --background: var(--pw-bg-canvas);
+  --surface: var(--pw-bg-surface);
+  --foreground: var(--pw-fg);
+  --muted: var(--pw-fg-muted);
+}
+
+.dark {
+  --pw-bg-canvas: #09090b;
+  --pw-bg-surface: #18181b;
+  --pw-bg-surface-2: #27272a;
+  --pw-bg-hover: rgb(255 255 255 / 0.06);
+  --pw-bg-selected: rgb(96 165 250 / 0.14);
+  --pw-fg: #fafafa;
+  --pw-fg-muted: #a1a1aa;
+  --pw-fg-subtle: #71717a;
+  --pw-border: #3f3f46;
+  --pw-border-hairline: rgb(255 255 255 / 0.08);
+  --pw-accent: #60a5fa;
+  --pw-accent-strong: #3b82f6;
+  --pw-danger: #f87171;
+  --pw-success: #4ade80;
+}
+
+/* 附加工具类（不与 HeroUI 的 bg-surface / text-muted 冲突） */
+@theme inline {
+  --color-canvas: var(--pw-bg-canvas);
+  --color-pw-surface: var(--pw-bg-surface);
+  --color-pw-surface-2: var(--pw-bg-surface-2);
+  --color-pw-hover: var(--pw-bg-hover);
+  --color-pw-selected: var(--pw-bg-selected);
+  --color-pw-accent-strong: var(--pw-accent-strong);
+  --color-fg: var(--pw-fg);
+  --color-fg-muted: var(--pw-fg-muted);
+  --color-fg-subtle: var(--pw-fg-subtle);
+  --color-pw-accent: var(--pw-accent);
+  --color-pw-danger: var(--pw-danger);
+  --color-pw-border: var(--pw-border);
+}
+
+/* 触屏指针 → 舒适密度（行更高、命中区更大） */
+@media (pointer: coarse) {
+  :root {
+    --pw-row-y: 10px;
+    --pw-hit: 44px;
+  }
+}
+
+/* 平台 chrome：按 OS 赋值，与 isDesktopApp 解耦（Linux 保留原生装饰） */
+html[data-insets="native"] {
+  --pw-safe-top: 0px;
+  --pw-safe-right: 0px;
+  --pw-safe-bottom: 0px;
+  --pw-safe-left: 0px;
+}
+html[data-chrome="windows"] {
+  --pw-titlebar: 36px;
+  --pw-caption-w: 144px;
+}
+html[data-chrome="macos"] {
+  --pw-titlebar: 36px;
+  --pw-traffic-pad: 78px;
+}
+
+/* BottomNav 仅在 compact（<768）挂载，纯 CSS 对齐其占位高度 */
+@media (max-width: 767px) {
+  :root {
+    --pw-nav-height: 52px;
+  }
+}
+
+/* ---------- 自适应壳层几何 ---------- */
+
+/* 导航：compact 抽屉 ↔ regular/wide 常驻栏 */
+.pw-nav-drawer {
+  position: fixed;
+  top: calc(var(--pw-titlebar) + var(--pw-safe-top));
+  bottom: var(--pw-safe-bottom);
+  left: var(--pw-safe-left);
+  z-index: 30;
+  width: min(320px, 86vw);
+  transform: translateX(-100%);
+  transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.pw-nav-drawer[data-open="true"] {
+  transform: translateX(0);
+}
+@media (min-width: 768px) {
+  .pw-nav-drawer {
+    position: static;
+    z-index: auto;
+    width: 240px;
+    transform: none;
+    transition: none;
+  }
+}
+@media (min-width: 1280px) {
+  .pw-nav-drawer {
+    width: 256px;
+  }
+}
+
+/* 详情：compact 全屏 ↔ regular 右侧抽屉 ↔ wide 停靠 */
+.pw-detail-pane {
+  position: fixed;
+  top: calc(var(--pw-titlebar) + var(--pw-safe-top));
+  right: var(--pw-safe-right);
+  bottom: calc(var(--pw-safe-bottom) + var(--pw-nav-height));
+  left: var(--pw-safe-left);
+  z-index: 30;
+}
+.pw-detail-backdrop {
+  position: fixed;
+  top: calc(var(--pw-titlebar) + var(--pw-safe-top));
+  right: var(--pw-safe-right);
+  bottom: var(--pw-safe-bottom);
+  left: var(--pw-safe-left);
+  z-index: 20;
+  display: none;
+  background: rgb(0 0 0 / 0.3);
+}
+@media (min-width: 768px) {
+  .pw-detail-pane {
+    left: auto;
+    width: 360px;
+    border-left: 1px solid var(--pw-border);
+  }
+  .pw-detail-backdrop {
+    display: block;
+  }
+}
+@media (min-width: 1280px) {
+  .pw-detail-pane {
+    position: static;
+    width: 360px;
+    flex-shrink: 0;
+    border-left: 1px solid var(--pw-border);
+  }
+  .pw-detail-backdrop {
+    display: none;
+  }
+}
+
+/* compact 快速添加悬浮按钮 */
+.pw-fab {
+  position: fixed;
+  right: calc(1rem + var(--pw-safe-right));
+  bottom: calc(1rem + var(--pw-nav-height) + var(--pw-safe-bottom));
+  z-index: 20;
+  display: none;
+}
+@media (max-width: 767px) {
+  .pw-fab {
+    display: flex;
+  }
+}
+
+/* 月视图格子高度：compact 56 / 横屏 48 / 桌面 76 / 宽屏 96 */
+.pw-month-cell {
+  min-height: 56px;
+}
+@media (max-height: 500px) {
+  .pw-month-cell {
+    min-height: 48px;
+  }
+}
+@media (min-width: 768px) {
+  .pw-month-cell {
+    min-height: 76px;
+  }
+}
+@media (min-width: 1280px) {
+  .pw-month-cell {
+    min-height: 96px;
+  }
+}

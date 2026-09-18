@@ -2,11 +2,14 @@ import { useRef, useState, type FormEvent } from "react";
 import { Button, Input, ListBox, ListBoxItem, Modal, Select, TextArea } from "@heroui/react";
 import { actions, useApp } from "../state/store";
 import { fromDateInput, toDateInput } from "../lib/dates";
+import { useShellMode } from "../lib/useShellMode";
 import { Field, PRIORITIES } from "./TaskDetail";
+import { DateField } from "./ui/DateField";
 
 /**
  * 新建任务详情弹框：快速添加回车后弹出，标题预填输入框内容。
  * `dueDate` 可选预填（月视图点格子新建时传入当天）。
+ * compact 上为底部抽屉（避免软键盘遮挡），否则居中弹框。
  * 「关闭」（含 Esc/点遮罩）= 放弃创建；「保存」校验标题非空后创建任务。
  */
 export function QuickAddModal({
@@ -20,6 +23,7 @@ export function QuickAddModal({
 }) {
   const projects = useApp((s) => s.projects);
   const view = useApp((s) => s.view);
+  const bottom = useShellMode() === "compact";
   // 弹框为条件挂载（关闭即卸载），草稿只需按 props 初始化一次
   const [draft, setDraft] = useState(() => ({
     title,
@@ -64,7 +68,7 @@ export function QuickAddModal({
       {/* react-aria 结构要求：Container/Dialog 必须是 Backdrop（ModalOverlay）的子节点，
           否则脱离定位上下文退回文档流，弹框不再居中 */}
       <Modal.Backdrop>
-        <Modal.Container placement="center">
+        <Modal.Container placement={bottom ? "bottom" : "center"}>
           <Modal.Dialog data-testid="new-task-modal">
             <form onSubmit={submit} className="flex flex-col">
               <Modal.Header>
@@ -117,13 +121,11 @@ export function QuickAddModal({
 
                 <Field label="截止日期">
                   <div className="flex w-full items-center gap-2">
-                    <input
-                      type="date"
+                    <DateField
                       value={draft.due}
-                      onChange={(e) => setDraft({ ...draft, due: e.target.value })}
-                      data-testid="new-task-due"
-                      aria-label="截止日期"
-                      className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 [color-scheme:light] dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 dark:[color-scheme:dark]"
+                      onChange={(due) => setDraft({ ...draft, due })}
+                      testId="new-task-due"
+                      ariaLabel="截止日期"
                     />
                     {draft.due !== "" && (
                       <Button
@@ -131,7 +133,7 @@ export function QuickAddModal({
                         type="button"
                         variant="ghost"
                         onPress={() => setDraft({ ...draft, due: "" })}
-                        className="shrink-0 text-xs text-zinc-400"
+                        className="shrink-0 text-xs text-fg-subtle"
                       >
                         清除
                       </Button>

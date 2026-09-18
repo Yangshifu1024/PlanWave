@@ -10,7 +10,7 @@ export function ViewModeToggle() {
   const viewMode = useApp((s) => s.viewMode);
   return (
     <div
-      className="flex shrink-0 items-center gap-0.5 rounded-lg bg-zinc-100 p-0.5 dark:bg-zinc-800"
+      className="flex shrink-0 items-center gap-0.5 rounded-lg bg-pw-surface-2 p-0.5 ring-1 ring-pw-border"
       data-testid="view-mode-toggle"
     >
       {MODES.map((m) => (
@@ -22,8 +22,8 @@ export function ViewModeToggle() {
           onClick={() => actions.setViewMode(m.value)}
           className={`rounded-md px-2.5 py-1 text-xs transition ${
             viewMode === m.value
-              ? "bg-white font-medium text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-zinc-100"
-              : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+              ? "bg-pw-surface font-medium text-fg shadow-sm"
+              : "text-fg-subtle hover:text-fg"
           }`}
         >
           {m.label}

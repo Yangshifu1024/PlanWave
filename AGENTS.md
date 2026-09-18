@@ -42,6 +42,7 @@ Definition of "everything passes": `cargo fmt --check`, clippy with `-D warnings
 - **Pull-based sync, no WebSocket**: local writes auto-push with a 1.5s debounce; remote changes arrive via manual refresh, app start, window focus, 60s foreground polling, and post-push pull. New devices bootstrap from `GET /sync/snapshot`.
 - **One web artifact for six platforms**: every client loads the same `apps/web/dist` + WASM. There is only one storage shape (IndexedDB) — no "desktop sqlite vs browser IndexedDB" split.
 - All domain actions flow through the Zustand store (`apps/web/src/state/store.ts`) → WASM `mutate`. Never bypass the oplog to mutate UI state directly.
+- **UI v2 adaptive shell**: design tokens live in `apps/web/src/theme/tokens.css` (`--pw-*`, light/dark, pointer-based auto density, platform chrome/safe-area, shell geometry). Layout is CSS-driven — compact (<768) / regular (768–1279) / wide (≥1280), detail docks at 1280; JS forks only via `lib/useShellMode.ts`. `platform.ts` writes `data-os`/`data-chrome`/`data-insets` on `<html>`; Android insets stay native-only (`data-insets="native"` zeroes the CSS safe-area vars).
 - MySQL migrations are hand-written SQL in `apps/server/migrations/`, auto-applied at startup via `sqlx::migrate!`. Known quirks: JSON columns need `CAST(... AS CHAR)` on read; lamport columns are `BIGINT UNSIGNED` → `u64`.
 
 ## Git workflow
@@ -138,7 +139,7 @@ Trigger: development done, new code awaiting merge
 - E2E must stay `workers: 1` / serial: all tests share one in-memory-store server with a single account.
 - Axum routes have no `/api` prefix — the prefix exists only in the production reverse proxy (Caddy strips it). Never add `/api` to server routes.
 - `apps/web/src/styles.css` must import `@heroui/styles` directly; importing it through `@heroui/react` leaves an unresolved `@import` and breaks the build.
-- Titlebar asymmetry: macOS uses `titleBarStyle: "Overlay"` from `tauri.conf.json`; Windows gets a frameless window via `WindowControls.tsx` calling `setDecorations(false)` with custom min/max/close buttons.
+- Titlebar asymmetry: macOS uses `titleBarStyle: "Overlay"` from `tauri.conf.json`; Windows gets a frameless window via `initializeWindowsFrameless()` (`WindowControls.tsx`) calling `setDecorations(false)`. Both use the single `components/shell/Titlebar.tsx` drag region with custom min/max/close buttons (Windows); Linux keeps native decorations (`data-chrome="linux"` → no web titlebar).
 - Android builds: `PLANWAVE_CN_MIRROR=1` enables Aliyun Maven mirrors (off by default — aliyun 502s hard-fail CI).
 - Android APK signing comes only from `gen/android/keystore.properties` + the `signingConfigs` block in `app/build.gradle.kts` — there is no `TAURI_ANDROID_KEYSTORE_*` env var; unsigned APKs fail CI (see `docs/ANDROID_SIGNING.md`).
 - Android is edge-to-edge (`targetSdk 36` + `enableEdgeToEdge()`), so the WebView draws under the system bars; `gen/android/app/src/main/java/xyz/yangshifu/planwave/MainActivity.kt` turns `systemBars | displayCutout` insets into padding on `android.R.id.content`. That is the only tracked Java source under `app/src/main/java/` — `tauri android init` only creates missing files (only `BuildTask.kt` is rewritten), so it survives re-init but not deleting/regenerating `gen/android`.

@@ -7,7 +7,7 @@ export function WebUpdateBanner() {
   if (!webStale || isTauri) return null;
   return (
     <div
-      className="fixed inset-x-0 top-0 z-50 flex items-center justify-center gap-3 bg-blue-500 px-4 py-1.5 text-sm text-white"
+      className="z-40 flex shrink-0 items-center justify-center gap-3 bg-blue-500 px-4 py-1.5 text-sm text-white"
       data-testid="web-update-banner"
     >
       <span>服务端已更新，刷新页面以获取最新版本</span>

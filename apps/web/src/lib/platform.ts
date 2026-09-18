@@ -12,12 +12,10 @@ declare global {
   }
 }
 
-export const isTauri =
-  typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+export const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 /** Tauri 桌面端（需要自绘标题栏拖拽区）；移动端有系统 UI，不走这套。 */
-export const isDesktopApp =
-  isTauri && !/Android|iPhone|iPad/i.test(navigator.userAgent);
+export const isDesktopApp = isTauri && !/Android|iPhone|iPad/i.test(navigator.userAgent);
 
 /** Tauri Windows 端：无原生标题栏（decorations 关闭），窗口控制按钮由前端自绘。 */
 export const isWindowsApp = isDesktopApp && /Windows/i.test(navigator.userAgent);
@@ -35,6 +33,36 @@ export const DEFAULT_API_BASE: string =
   (typeof location !== "undefined" && ["5173", "4173"].includes(location.port)
     ? "http://127.0.0.1:8787"
     : `${location.origin}/api`);
+
+/**
+ * 把平台事实写到 `<html>` 数据集上，供纯 CSS 自适应（chrome / 安全区）消费：
+ * - `data-os`：windows / macos / linux / android / ios / web
+ * - `data-chrome`：windows（无边框 + 自绘按钮）/ macos（Overlay 红绿灯）/ linux（原生装饰，无 Web 标题栏）/ none
+ * - `data-insets`：native（Android 已在 MainActivity 原生补过内边距，Web 侧不得再补）/ css
+ *
+ * chrome 由 **OS** 决定，而非 isDesktopApp——Linux 的 Overlay 不生效，保留原生标题栏。
+ */
+export function applyPlatformAttrs(): void {
+  const el = document.documentElement;
+  const ua = navigator.userAgent;
+  const android = isTauri && /Android/i.test(ua);
+  const ios = isTauri && /iPhone|iPad/i.test(ua);
+
+  if (isWindowsApp) {
+    el.dataset.os = "windows";
+    el.dataset.chrome = "windows";
+  } else if (isDesktopApp && /Mac/i.test(ua)) {
+    el.dataset.os = "macos";
+    el.dataset.chrome = "macos";
+  } else if (isDesktopApp) {
+    el.dataset.os = "linux";
+    el.dataset.chrome = "linux";
+  } else {
+    el.dataset.os = android ? "android" : ios ? "ios" : "web";
+    el.dataset.chrome = "none";
+  }
+  el.dataset.insets = android ? "native" : "css";
+}
 
 /** 用户覆盖的服务器地址（登录屏可改）。 */
 export function getStoredApiBase(): string | null {
