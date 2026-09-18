@@ -144,16 +144,18 @@ function applyTheme(theme: Theme): void {
     theme === "dark" ||
     (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
   root.classList.toggle("dark", dark);
+  // 移动端状态栏颜色跟随画布，避免与页面底色割裂
+  document
+    .querySelector('meta[name="theme-color"]')
+    ?.setAttribute("content", dark ? "#09090b" : "#f4f4f5");
 }
 
 // 「跟随系统」主题实时跟随 OS 深浅色切换（仅 system 档响应）；
 // jsdom 无 matchMedia，测试环境守卫
 if (typeof window.matchMedia === "function") {
-  window
-    .matchMedia("(prefers-color-scheme: dark)")
-    .addEventListener("change", () => {
-      if (useApp.getState().theme === "system") applyTheme("system");
-    });
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+    if (useApp.getState().theme === "system") applyTheme("system");
+  });
 }
 
 export const actions = {

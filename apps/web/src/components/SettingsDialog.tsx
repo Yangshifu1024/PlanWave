@@ -4,13 +4,14 @@ import type { Theme } from "../state/store";
 import { actions, useApp } from "../state/store";
 import { checkForUpdates, currentAppVersion } from "../lib/updater";
 import { isDesktopApp, isTauri, getApiBase } from "../lib/platform";
+import { useShellMode } from "../lib/useShellMode";
 import {
   getProxySettings,
   isValidProxyUrl,
   setProxySettings,
   type ProxyMode,
 } from "../lib/proxySettings";
-import { Logo } from "../App";
+import { Logo } from "./ui/Logo";
 
 type TabKey = "appearance" | "network" | "about";
 
@@ -42,6 +43,7 @@ export function SettingsDialog() {
   const [testing, setTesting] = useState(false);
   // 网络 Tab 仅桌面端（Windows/macOS/Linux）显示
   const showNetwork = isTauri && isDesktopApp;
+  const bottom = useShellMode() === "compact";
 
   useEffect(() => {
     if (!open) return;
@@ -102,9 +104,13 @@ export function SettingsDialog() {
       }}
     >
       <Modal.Backdrop>
-        <Modal.Container placement="center">
-          {/* 宽度取三面板最大需宽：切换 Tab 时宽度恒定，避免 Tab 列表被瞬间挤压出现滚动条闪现 */}
-          <Modal.Dialog data-testid="settings-dialog" className="max-w-md min-w-96">
+        <Modal.Container placement={bottom ? "bottom" : "center"}>
+          {/* 宽度取三面板最大需宽：切换 Tab 时宽度恒定，避免 Tab 列表被瞬间挤压出现滚动条闪现。
+             宽度用 min(100vw - 24px, 28rem)，窄屏（390px）不再横向溢出（原 min-w-96 的问题）。 */}
+          <Modal.Dialog
+            data-testid="settings-dialog"
+            className="w-[min(100vw-24px,28rem)] max-w-md"
+          >
             <Modal.Header>
               <Modal.Heading className="text-lg font-bold">设置</Modal.Heading>
             </Modal.Header>
@@ -149,7 +155,7 @@ export function SettingsDialog() {
                       <Radio key={o.value} value={o.value}>
                         <Radio.Content
                           data-testid={`theme-option-${o.value}`}
-                          className="w-full rounded-lg border border-zinc-200 p-3 hover:bg-zinc-50 data-[selected=true]:border-blue-500 data-[selected=true]:bg-blue-50 dark:border-zinc-700 dark:hover:bg-zinc-800/60 dark:data-[selected=true]:border-blue-400 dark:data-[selected=true]:bg-blue-950/40"
+                          className="w-full rounded-lg border border-pw-border p-3 hover:bg-pw-hover data-[selected=true]:border-blue-500 data-[selected=true]:bg-pw-selected dark:data-[selected=true]:border-blue-400"
                         >
                           <Radio.Control>
                             <Radio.Indicator />
@@ -173,7 +179,7 @@ export function SettingsDialog() {
                           <Radio key={o.value} value={o.value}>
                             <Radio.Content
                               data-testid={`proxy-mode-option-${o.value}`}
-                              className="w-full rounded-lg border border-zinc-200 p-3 hover:bg-zinc-50 data-[selected=true]:border-blue-500 data-[selected=true]:bg-blue-50 dark:border-zinc-700 dark:hover:bg-zinc-800/60 dark:data-[selected=true]:border-blue-400 dark:data-[selected=true]:bg-blue-950/40"
+                              className="w-full rounded-lg border border-pw-border p-3 hover:bg-pw-hover data-[selected=true]:border-blue-500 data-[selected=true]:bg-pw-selected dark:data-[selected=true]:border-blue-400"
                             >
                               <Radio.Control>
                                 <Radio.Indicator />
@@ -191,10 +197,10 @@ export function SettingsDialog() {
                             placeholder="http://127.0.0.1:7890 或 socks5://…"
                             data-testid="settings-proxy-url"
                             aria-label="自定义代理地址"
-                            className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 [color-scheme:light] dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 dark:[color-scheme:dark]"
+                            className="w-full rounded-xl border border-pw-border bg-pw-surface px-3 py-2 text-sm text-fg [color-scheme:light] dark:[color-scheme:dark]"
                           />
                           {!isValidProxyUrl(proxyUrl) && (
-                            <p className="text-xs text-zinc-400">
+                            <p className="text-xs text-fg-subtle">
                               填写有效代理地址（http/https/socks5）后自动生效
                             </p>
                           )}
@@ -219,7 +225,7 @@ export function SettingsDialog() {
                           )}
                         </div>
                       )}
-                      <p className="text-xs text-zinc-400">
+                      <p className="text-xs text-fg-subtle">
                         代理仅在本机生效，用于应用与更新请求；不会同步到其他设备。
                       </p>
                     </div>
@@ -229,7 +235,7 @@ export function SettingsDialog() {
                   <div className="flex flex-col items-center gap-2 py-2 text-center">
                     <Logo className="size-10 text-blue-500" />
                     <div className="text-sm font-semibold">PlanWave</div>
-                    <div className="text-xs text-zinc-400" data-testid="settings-app-version">
+                    <div className="text-xs text-fg-subtle" data-testid="settings-app-version">
                       版本 {appVersion}
                     </div>
                     <Button

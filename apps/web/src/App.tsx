@@ -2,20 +2,23 @@ import { useEffect } from "react";
 import { Toast } from "@heroui/react";
 import { actions, useApp } from "./state/store";
 import { scheduleAutoUpdateCheck } from "./lib/updater";
+import { useShellMode } from "./lib/useShellMode";
 import { AuthScreen } from "./components/AuthScreen";
 import { Sidebar } from "./components/Sidebar";
 import { TaskList } from "./components/TaskList";
 import { TaskDetail } from "./components/TaskDetail";
 import { UpdateDialog } from "./components/UpdateDialog";
-import { WebUpdateBanner } from "./components/WebUpdateBanner";
 import { PurgeConfirmDialog } from "./components/PurgeConfirmDialog";
 import { AppConfirmDialog } from "./components/ConfirmDialog";
 import { SettingsDialog } from "./components/SettingsDialog";
-import { WindowControls } from "./components/WindowControls";
+import { AppShell } from "./components/shell/AppShell";
+import { SafeArea } from "./components/shell/SafeArea";
+import { AdaptivePane } from "./components/shell/AdaptivePane";
+import { BottomNav } from "./components/shell/BottomNav";
+import { Logo } from "./components/ui/Logo";
 
 export default function App() {
   const phase = useApp((s) => s.phase);
-  const sidebarOpen = useApp((s) => s.sidebarOpen);
 
   useEffect(() => {
     void actions.boot();
@@ -27,24 +30,31 @@ export default function App() {
   }, [phase]);
 
   return (
-    <>
-      <WindowControls />
-      {phase === "boot" && <BootSplash />}
-      {phase === "auth" && <AuthScreen />}
-      {phase === "ready" && <MainLayout sidebarOpen={sidebarOpen} />}
+    <AppShell>
+      {phase === "boot" && (
+        <SafeArea className="flex flex-1 items-center justify-center">
+          <BootSplash />
+        </SafeArea>
+      )}
+      {phase === "auth" && (
+        <SafeArea className="flex min-h-0 flex-1 flex-col">
+          <AuthScreen />
+        </SafeArea>
+      )}
+      {phase === "ready" && <MainLayout />}
       <UpdateDialog />
       <AppConfirmDialog />
       <SettingsDialog />
       {/* 全局 Toast 区域（列表页「撤销完成」等）；使用 HeroUI 全局 toast 队列 */}
       <Toast.Provider placement="bottom" />
-    </>
+    </AppShell>
   );
 }
 
 function BootSplash() {
   return (
     <div className="flex h-full items-center justify-center" data-testid="boot-splash">
-      <div className="flex items-center gap-3 text-zinc-400">
+      <div className="flex items-center gap-3 text-fg-subtle">
         <Logo className="size-8 animate-pulse text-blue-500" />
         <span className="text-sm tracking-widest">PLANWAVE</span>
       </div>
@@ -52,46 +62,26 @@ function BootSplash() {
   );
 }
 
-function MainLayout({ sidebarOpen }: { sidebarOpen: boolean }) {
+function MainLayout() {
+  const sidebarOpen = useApp((s) => s.sidebarOpen);
+  const compact = useShellMode() === "compact";
   return (
-    <div className="flex h-full">
-      <WebUpdateBanner />
-      {/* 移动端遮罩 */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-20 bg-black/30 md:hidden"
-          onClick={() => actions.toggleSidebar(false)}
-          data-testid="sidebar-backdrop"
-        />
-      )}
-      {/* 侧栏容器：移动端抽屉，桌面常驻；滚动收敛到 Sidebar 内部导航区，底行固定 */}
-      <div
-        className={`fixed inset-y-0 left-0 z-30 flex flex-col bg-zinc-100 transition-transform duration-200 dark:bg-zinc-900 md:static md:z-auto md:translate-x-0 ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+    <>
+      {/* BottomNav 挂载时 bottom 安全区由它自己消费，SafeArea 不再重复补 */}
+      <SafeArea
+        className="flex min-h-0 flex-1"
+        edges={compact ? ["top", "left", "right"] : ["top", "right", "bottom", "left"]}
       >
-        <Sidebar />
-      </div>
-      <main className="flex min-w-0 flex-1 flex-col bg-white dark:bg-zinc-900">
-        <TaskList />
-      </main>
-      <TaskDetail />
+        <AdaptivePane role="nav" open={sidebarOpen} onClose={() => actions.toggleSidebar(false)}>
+          <Sidebar />
+        </AdaptivePane>
+        <AdaptivePane role="main">
+          <TaskList />
+        </AdaptivePane>
+        <TaskDetail />
+      </SafeArea>
+      <BottomNav />
       <PurgeConfirmDialog />
-    </div>
-  );
-}
-
-export function Logo({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 32 32" fill="none" className={className} aria-hidden>
-      <circle cx="16" cy="16" r="13" stroke="currentColor" strokeWidth="2.5" />
-      <path
-        d="M10.5 16.5l3.5 3.5 7-7.5"
-        stroke="currentColor"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+    </>
   );
 }

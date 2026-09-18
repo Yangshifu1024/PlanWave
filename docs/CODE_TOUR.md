@@ -70,7 +70,11 @@ v2 的关键决定：**客户端数据层只有一种实现**——同步语义�
 | `src/wasm/client.ts` | WASM 装载器 + 类型化包装（JSON 字符串 ↔ 对象）；调试句柄 `__planwave` |
 | `src/state/store.ts` | Zustand 全局状态 + 所有领域动作（addTask/toggleTask…），全部转调 WASM 客户端 `mutate`；**1.5s 防抖自动推送**、60s 前台轮询、聚焦/online 事件桥、reload 世代号（防并发旧读覆盖新写） |
 | `src/components/` | AuthScreen（登录）、Sidebar（侧栏）、TaskList（列表+搜索+刷新按钮+同步徽章+下拉刷新+列表/月切换）、MonthView（月网格+拖拽改期+未排期抽屉）、DayTasksOverlay（某天任务浮层）、TaskRow（单行，子任务缩进/进度/折叠）、TaskDetail（详情面板+子任务管理+重复规则编辑器）、SyncStatusSheet（同步状态详情页：pending 队列/最近 op/错误），全部 HeroUI v3 |
-| `src/lib/platform.ts` | API 地址解析：`VITE_API_BASE` 显式配置 → dev/preview 端口（5173/4173→8787）启发式 → 生产同源 `/api` |
+| `src/components/shell/` | UI v2 自适应壳：AppShell（Titlebar + 内容列）、Titlebar（拖拽区 + Windows 窗口按钮）、SafeArea（`--pw-safe-*` 内边距）、AdaptivePane（nav/main/detail 三模式几何）、BottomNav（compact 底部导航 + 更多菜单） |
+| `src/components/ui/` | 令牌化基础件：Logo、DateField（原生日期）、NativeSelect（原生下拉） |
+| `src/theme/tokens.css` | UI v2 设计令牌（`--pw-*` 亮/暗）、附加工具类、按指针的自动密度、平台 chrome 与安全区、自适应壳层几何（抽屉/详情/FAB/月格） |
+| `src/lib/platform.ts` | API 地址解析：`VITE_API_BASE` 显式配置 → dev/preview 端口（5173/4173→8787）启发式 → 生产同源 `/api`；`applyPlatformAttrs()` 写入 `data-os`/`data-chrome`/`data-insets` 供纯 CSS 自适应 |
+| `src/lib/useShellMode.ts` | 壳层模式判定：compact(<768)/regular(768–1279)/wide(≥1280) 与粗指针探测（jsdom 默认 wide）；替代原 `useNarrowViewport` |
 | `src/lib/filters.ts` | 今天/最近7天/全部/回收站 的筛选排序 + `visibleTree` 子任务树（父不可见时子任务提升为顶层行，纯函数） |
 | `src/lib/monthGrid.ts` | 月视图纯逻辑：周一起始的固定 6 行网格、按本地日分桶、溢出计数、「未排期」筛选、拖拽改期语义（纯函数） |
 | `src/lib/recurrence.ts` | 重复任务到期滚动（本地时区保时刻、月/年末日收敛、周几组合）+ 规则中文摘要 |

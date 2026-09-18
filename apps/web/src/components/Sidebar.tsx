@@ -1,21 +1,89 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { Button, Dropdown, DropdownItem, DropdownMenu, DropdownPopover, DropdownTrigger, Input, Label, Separator } from "@heroui/react";
+import {
+  Button,
+  Dropdown,
+  DropdownItem,
+  DropdownMenu,
+  DropdownPopover,
+  DropdownTrigger,
+  Input,
+  Label,
+  Separator,
+} from "@heroui/react";
 import type { ProjectRecord } from "../types";
 import { actions, useApp, type ViewKind } from "../state/store";
 import { countTasks } from "../lib/filters";
 import { PROJECT_DOT_COLORS, projectDotClass } from "../lib/projectColors";
-import { isDesktopApp } from "../lib/platform";
 import { ProjectRenameDialog } from "./ProjectRenameDialog";
-import { Logo } from "../App";
+import { Logo } from "./ui/Logo";
 
-const SMART_LISTS: { key: "today" | "upcoming" | "all" | "trash"; label: string }[] = [
-  { key: "today", label: "今天" },
-  { key: "upcoming", label: "最近 7 天" },
-  { key: "all", label: "全部" },
-  { key: "trash", label: "回收站" },
+const ICON_TODAY = (
+  <svg viewBox="0 0 20 20" className="size-4 shrink-0" fill="none" aria-hidden>
+    <rect x="3" y="4" width="14" height="13" rx="2.5" stroke="currentColor" strokeWidth="1.5" />
+    <path
+      d="M3 8h14M7 2.5v3M13 2.5v3"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+    />
+    <circle cx="10" cy="12.5" r="1.5" fill="currentColor" />
+  </svg>
+);
+
+const ICON_UPCOMING = (
+  <svg viewBox="0 0 20 20" className="size-4 shrink-0" fill="none" aria-hidden>
+    <rect x="3" y="4" width="14" height="13" rx="2.5" stroke="currentColor" strokeWidth="1.5" />
+    <path
+      d="M3 8h14M7 2.5v3M13 2.5v3"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+    />
+    <path d="M6.5 11h7M6.5 14h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+);
+
+const ICON_ALL = (
+  <svg viewBox="0 0 20 20" className="size-4 shrink-0" fill="none" aria-hidden>
+    <path
+      d="M3 6.5A2.5 2.5 0 0 1 5.5 4h9A2.5 2.5 0 0 1 17 6.5v7A2.5 2.5 0 0 1 14.5 16h-9A2.5 2.5 0 0 1 3 13.5v-7Z"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M3 11h4l1 1.8h4L13 11h4"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const ICON_TRASH = (
+  <svg viewBox="0 0 20 20" className="size-4 shrink-0" fill="none" aria-hidden>
+    <path
+      d="M4 5.5h12M8 5.5V4.4c0-.5.4-.9.9-.9h2.2c.5 0 .9.4.9.9v1.1M6 5.5l.6 9.6c0 .7.6 1.2 1.2 1.2h4.4c.7 0 1.2-.5 1.2-1.2l.6-9.6"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
+const SMART_LISTS: {
+  key: "today" | "upcoming" | "all" | "trash";
+  label: string;
+  icon: ReactNode;
+}[] = [
+  { key: "today", label: "今天", icon: ICON_TODAY },
+  { key: "upcoming", label: "最近 7 天", icon: ICON_UPCOMING },
+  { key: "all", label: "全部", icon: ICON_ALL },
+  { key: "trash", label: "回收站", icon: ICON_TRASH },
 ];
 
-/** 左侧栏：智能清单 + 项目列表 + 设置/登出。桌面常驻，移动端抽屉。
+/** 左侧栏：智能清单 + 项目列表 + 设置/登出。
+ * 桌面由 AdaptivePane 常驻（宽 240/256），移动端为抽屉。
  * 导航区滚动、底行固定：项目再多也不会把设置/登出推出视野。
  */
 export function Sidebar() {
@@ -30,7 +98,8 @@ export function Sidebar() {
   const counts = useMemo(() => {
     const map = new Map<string, number>();
     const compute = (v: ViewKind) => countTasks(tasks, v);
-    for (const s of SMART_LISTS) map.set(`smart:${s.key}`, compute({ kind: "smart", smart: s.key }));
+    for (const s of SMART_LISTS)
+      map.set(`smart:${s.key}`, compute({ kind: "smart", smart: s.key }));
     for (const p of projects) map.set(`project:${p.id}`, compute({ kind: "project", id: p.id }));
     return map;
   }, [tasks, projects]);
@@ -42,14 +111,10 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="flex h-full w-full shrink-0 flex-col gap-1 p-4 md:w-64">
-      {/* 桌面端自绘标题栏：侧栏顶部拖拽区（macOS 红绿灯落在这里），背景与侧栏一致 */}
-      {isDesktopApp && <div data-tauri-drag-region className="-mx-4 -mt-4 h-9 shrink-0" aria-hidden />}
-      <div className="mb-4 flex items-center gap-2 px-2 pt-2">
+    <aside className="flex h-full w-full shrink-0 flex-col gap-1 p-3">
+      <div className="mb-3 flex items-center gap-2 px-2 pt-2">
         <Logo className="size-6 text-blue-500" />
-        <span className="text-sm font-semibold tracking-widest text-zinc-500 dark:text-zinc-400">
-          PLANWAVE
-        </span>
+        <span className="text-sm font-semibold tracking-widest text-fg-subtle">PLANWAVE</span>
       </div>
 
       {/* 可滚动导航区：项目再多时仅此区域滚动，底行始终固定 */}
@@ -57,6 +122,7 @@ export function Sidebar() {
         {SMART_LISTS.map((s) => (
           <SideItem
             key={s.key}
+            icon={s.icon}
             active={view.kind === "smart" && view.smart === s.key}
             label={s.label}
             count={counts.get(`smart:${s.key}`) ?? 0}
@@ -66,7 +132,7 @@ export function Sidebar() {
         ))}
 
         <div className="mt-5 flex items-center justify-between px-2">
-          <span className="text-xs font-medium uppercase tracking-wider text-zinc-400">项目</span>
+          <span className="text-xs font-medium uppercase tracking-wider text-fg-subtle">项目</span>
           <Button
             isIconOnly
             variant="ghost"
@@ -119,7 +185,7 @@ export function Sidebar() {
           onPress={() => actions.openSettings()}
           data-testid="open-settings"
           aria-label="设置"
-          className="text-zinc-400"
+          className="text-fg-subtle"
         >
           <svg viewBox="0 0 20 20" className="size-4" fill="none" aria-hidden>
             <path
@@ -142,7 +208,7 @@ export function Sidebar() {
             })
           }
           data-testid="logout"
-          className="text-xs text-zinc-400"
+          className="text-xs text-fg-subtle"
         >
           退出登录
         </Button>
@@ -155,7 +221,7 @@ export function Sidebar() {
 }
 
 /** 项目行：左键导航；⋯ 按钮唤出项目菜单（改色 / 重命名 / 删除）。
- * 取代原 SideItem 在项目行的用法；智能清单仍由 SideItem 渲染。 */
+ * ⋯ 常显（去除 hover 才出现的交互）；计数也不再悬停隐藏。 */
 function ProjectRow(props: {
   project: ProjectRecord;
   active: boolean;
@@ -172,15 +238,15 @@ function ProjectRow(props: {
   const isStale = !props.projects.some((x) => x.id === p.id && !x.deleted);
 
   return (
-    <div className="group flex items-center">
+    <div className="group flex items-center gap-1">
       {/* 导航区：左键切换到该项目视图（testid 保持在可点击元素上，E2E 依赖）。 */}
       <button
         onClick={() => actions.setView({ kind: "project", id: p.id })}
         data-testid={`nav-project-${p.name}`}
         className={`flex min-w-0 flex-1 items-center justify-between rounded-lg px-3 py-1.5 text-sm outline-none transition ${
           props.active
-            ? "bg-blue-500 text-white"
-            : "text-zinc-600 hover:bg-zinc-200/60 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            ? "bg-pw-selected font-medium text-pw-accent"
+            : "text-fg-muted hover:bg-pw-hover"
         }`}
       >
         <span className="flex min-w-0 items-center gap-2">
@@ -188,9 +254,7 @@ function ProjectRow(props: {
           <span className="truncate">{p.name}</span>
         </span>
         {props.count > 0 && (
-          <span
-            className={`ml-1 text-xs ${props.active ? "text-blue-100" : "text-zinc-400"} group-hover:invisible`}
-          >
+          <span className={`ml-1 text-xs ${props.active ? "text-pw-accent/70" : "text-fg-subtle"}`}>
             {props.count}
           </span>
         )}
@@ -201,7 +265,7 @@ function ProjectRow(props: {
         <DropdownTrigger
           aria-label="项目菜单"
           data-testid={`project-menu-${p.name}`}
-          className="ml-1 flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-200/60 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+          className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-fg-subtle transition hover:bg-pw-hover hover:text-fg"
         >
           ⋯
         </DropdownTrigger>
@@ -209,7 +273,7 @@ function ProjectRow(props: {
           {/* 颜色区放 Menu 之外的 Popover 直下：RAC Menu 只渲染集合节点（Item/Section），
               裸 div 会被集合构建剔除（首版「弹层开着但内容为空」的根因）。 */}
           <div aria-label="项目颜色" className="flex items-center gap-1.5 px-2 pt-2">
-            <span className="text-xs font-medium text-zinc-400">颜色</span>
+            <span className="text-xs font-medium text-fg-subtle">颜色</span>
             {Object.entries(PROJECT_DOT_COLORS).map(([color, cls]) => (
               <button
                 key={color}
@@ -233,9 +297,8 @@ function ProjectRow(props: {
           </div>
           <Separator className="mt-2" />
           <DropdownMenu>
-            {/* 动作挂在 Item 自身的 onAction 上：RAC Menu 本身无 onAction prop（传了会被静默忽略），
-                这是首版「点重命名无反应」的根因；文字用官方 Label 吃 hover/焦点态，删除用官方 danger 变体；
-                菜单项选中后由 RAC 自动收起菜单。 */}
+            {/* 动作挂在 Item 自身的 onAction 上：RAC Menu 本身无 onAction prop（传了会被静默忽略）；
+                文字用官方 Label 吃 hover/焦点态，删除用官方 danger 变体；菜单项选中后由 RAC 自动收起。 */}
             <DropdownItem
               key="rename"
               onAction={() => {
@@ -267,7 +330,9 @@ function ProjectRow(props: {
     </div>
   );
 }
+
 function SideItem(props: {
+  icon: ReactNode;
   active: boolean;
   label: ReactNode;
   count: number;
@@ -276,23 +341,22 @@ function SideItem(props: {
 }) {
   return (
     <div
-      className={`group flex items-center justify-between rounded-lg px-3 py-1.5 text-sm transition ${
+      className={`flex items-center justify-between rounded-lg text-sm transition ${
         props.active
-          ? "bg-blue-500 text-white"
-          : "text-zinc-600 hover:bg-zinc-200/60 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          ? "bg-pw-selected font-medium text-pw-accent"
+          : "text-fg-muted hover:bg-pw-hover"
       }`}
     >
       <button
         onClick={props.onClick}
         data-testid={props.testId}
-        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        className="flex min-w-0 flex-1 items-center gap-2 px-3 py-1.5 text-left"
       >
+        {props.icon}
         <span className="min-w-0 flex-1 truncate">{props.label}</span>
       </button>
       {props.count > 0 && (
-        <span
-          className={`ml-1 text-xs ${props.active ? "text-blue-100" : "text-zinc-400"} group-hover:invisible`}
-        >
+        <span className={`pr-3 text-xs ${props.active ? "text-pw-accent/70" : "text-fg-subtle"}`}>
           {props.count}
         </span>
       )}

@@ -1,9 +1,14 @@
 import { Fragment, useEffect, useMemo, useState, type FormEvent } from "react";
 import { Button, Checkbox, Input } from "@heroui/react";
 import { actions, useApp, type ViewKind } from "../state/store";
-import { groupByDue, splitCompleted, subtaskProgress, visibleTree, type TaskTree } from "../lib/filters";
+import {
+  groupByDue,
+  splitCompleted,
+  subtaskProgress,
+  visibleTree,
+  type TaskTree,
+} from "../lib/filters";
 import { usePullToRefresh } from "../lib/usePullToRefresh";
-import { isDesktopApp } from "../lib/platform";
 import { TaskRow } from "./TaskRow";
 import { QuickAddModal } from "./QuickAddModal";
 import { SyncStatusSheet } from "./SyncStatusSheet";
@@ -55,6 +60,9 @@ export function TaskList() {
   const { ref: listRef, pullPx, phase } = usePullToRefresh(() => actions.refresh());
   const rowCount = tree.reduce((n, node) => n + 1 + node.children.length, 0);
   const visibleCount = searching ? tree.length : active.length + completed.length;
+  // 快速添加入口（inline 表单 / compact FAB）只在列表形态的存活视图提供：
+  // 回收站里新建会得到「活任务」，月视图里新建会丢日期预填
+  const showQuickAdd = !isTrash && !showMonth;
 
   const toggleCompleted = () => {
     setShowCompleted((prev) => {
@@ -162,255 +170,278 @@ export function TaskList() {
 
   return (
     <>
-      {/* 桌面端自绘标题栏：内容列顶部拖拽区（Windows 窗口控制按钮落在这里右上） */}
-      {isDesktopApp && <div data-tauri-drag-region className="h-9 shrink-0" aria-hidden />}
-      <div className="flex items-center gap-1.5 px-4 pt-4 sm:gap-2 sm:px-6 sm:pt-5">
-        <button
-          className="rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-200/60 md:hidden dark:hover:bg-zinc-800"
-          onClick={() => actions.toggleSidebar(true)}
-          aria-label="打开侧栏"
-          data-testid="menu-button"
-        >
-          <svg viewBox="0 0 20 20" className="size-5" fill="none" aria-hidden>
-            <path
-              d="M3 5h14M3 10h14M3 15h14"
-              stroke="currentColor"
-              strokeWidth="1.6"
-              strokeLinecap="round"
+      <div className="flex min-h-0 flex-1 flex-col items-center">
+        {/* 宽屏下内容列限宽居中（不靠窗口宽度拉伸） */}
+        <div className="flex min-h-0 w-full flex-1 flex-col xl:max-w-[52rem]">
+          <div className="flex items-center gap-1.5 px-4 pt-4 sm:gap-2 sm:px-6 sm:pt-5">
+            <Input
+              value={search}
+              onChange={(e) => actions.setSearch(e.target.value)}
+              placeholder="搜索"
+              data-testid="search-input"
+              className="min-w-0 flex-1 sm:w-56 sm:flex-none"
             />
-          </svg>
-        </button>
-        <Input
-          value={search}
-          onChange={(e) => actions.setSearch(e.target.value)}
-          placeholder="搜索"
-          data-testid="search-input"
-          className="min-w-0 flex-1 sm:w-56 sm:flex-none"
-        />
-        <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-3">
-          <SyncBadge />
-          <Button
-            isIconOnly
-            variant="ghost"
-            onPress={() => void actions.refresh()}
-            aria-label="手动刷新"
-            data-testid="refresh-button"
-          >
-            <svg viewBox="0 0 20 20" className="size-4" fill="none" aria-hidden>
-              <path
-                d="M16.5 10a6.5 6.5 0 1 1-1.9-4.6M16.5 3.5v3h-3"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </Button>
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between gap-2 px-6 pt-4">
-        <h1 className="text-2xl font-bold" data-testid="view-title">
-          {viewTitle(view)}
-        </h1>
-        {monthSupported && <ViewModeToggle />}
-      </div>
-
-      {!isTrash && !showMonth && (
-        <form onSubmit={submit} className="flex gap-2 px-6 pt-3">
-          <Input
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder="输入任务"
-            data-testid="new-task-input"
-            fullWidth
-          />
-        </form>
-      )}
-
-      {/* 回收站工具行：全选 + 清空回收站 */}
-      {isTrash && rowCount > 0 && (
-        <div className="flex items-center gap-3 px-6 pt-3">
-          <Checkbox
-            isSelected={allTrashChecked}
-            onChange={toggleAllTrash}
-            data-testid="trash-select-all"
-            aria-label="全选回收站任务"
-          >
-            <Checkbox.Content>
-              <Checkbox.Control>
-                <Checkbox.Indicator />
-              </Checkbox.Control>
-            </Checkbox.Content>
-          </Checkbox>
-          <span className="text-xs text-zinc-400">全选</span>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="ml-auto text-zinc-400 hover:text-red-500"
-            onPress={() =>
-              actions.openPurgeConfirm(tasks.filter((t) => t.deleted).map((t) => t.id))
-            }
-            data-testid="trash-clear"
-          >
-            清空回收站
-          </Button>
-        </div>
-      )}
-
-      {/* 回收站批量操作条：有勾选项时浮出 */}
-      {isTrash && trashSelected.size > 0 && (
-        <div
-          className="mx-6 mt-3 flex items-center gap-3 rounded-xl bg-red-50 px-3 py-2 dark:bg-red-500/10"
-          data-testid="trash-bulk-bar"
-        >
-          <span className="text-sm text-zinc-500 dark:text-zinc-300">
-            已选 {trashSelected.size} 项
-          </span>
-          <Button
-            size="sm"
-            className="ml-auto bg-red-500 text-white hover:bg-red-600"
-            onPress={() => actions.openPurgeConfirm([...trashSelected])}
-            data-testid="trash-bulk-delete"
-          >
-            删除所选
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onPress={() => setTrashSelected(new Set())}
-            data-testid="trash-bulk-cancel"
-          >
-            取消
-          </Button>
-        </div>
-      )}
-
-      {showMonth ? (
-        <MonthView />
-      ) : (
-        <div className="relative mt-3 flex-1 min-h-0">
-        <div
-          className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-center text-xs text-zinc-400 transition-opacity"
-          style={{
-            height: 48,
-            opacity: phase === "idle" ? 0 : 1,
-            transform: `translateY(${Math.max(0, pullPx - 48)}px)`,
-          }}
-          aria-hidden={phase === "idle"}
-          data-testid="pull-indicator"
-        >
-          {phase === "refreshing" ? (
-            <span className="flex items-center gap-1.5">
-              <svg viewBox="0 0 20 20" className="size-3.5 animate-spin" fill="none" aria-hidden>
-                <circle
-                  cx="10"
-                  cy="10"
-                  r="7.5"
-                  stroke="currentColor"
-                  strokeOpacity="0.25"
-                  strokeWidth="2"
-                />
-                <path
-                  d="M17.5 10a7.5 7.5 0 0 0-7.5-7.5"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-              </svg>
-              刷新中…
-            </span>
-          ) : (
-            <span className="flex items-center gap-1.5">
-              <svg
-                viewBox="0 0 20 20"
-                className={`size-3.5 transition-transform ${phase === "ready" ? "rotate-180" : ""}`}
-                fill="none"
-                aria-hidden
+            <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-3">
+              <SyncBadge />
+              <Button
+                isIconOnly
+                variant="ghost"
+                onPress={() => void actions.refresh()}
+                aria-label="手动刷新"
+                data-testid="refresh-button"
               >
-                <path
-                  d="M10 3.5v11M5.5 10L10 14.5 14.5 10"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              {phase === "ready" ? "松手刷新" : "下拉刷新"}
-            </span>
+                <svg viewBox="0 0 20 20" className="size-4" fill="none" aria-hidden>
+                  <path
+                    d="M16.5 10a6.5 6.5 0 1 1-1.9-4.6M16.5 3.5v3h-3"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-2 px-6 pt-4">
+            <h1 className="text-2xl font-bold" data-testid="view-title">
+              {viewTitle(view)}
+            </h1>
+            {monthSupported && <ViewModeToggle />}
+          </div>
+
+          {showQuickAdd && (
+            <form onSubmit={submit} className="hidden gap-2 px-6 pt-3 md:flex">
+              <Input
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                placeholder="输入任务"
+                data-testid="new-task-input"
+                fullWidth
+              />
+            </form>
           )}
-        </div>
-        <ul
-          ref={listRef}
-          className="h-full space-y-0.5 overflow-y-auto overscroll-contain px-3 pb-8"
-          data-testid="task-list"
-          style={{
-            transform: `translateY(${pullPx}px)`,
-            transition:
-              phase === "pulling" || phase === "ready" ? "none" : "transform 0.2s ease-out",
-          }}
-        >
-          {isTrash || searching ? (
-            tree.map(renderNode)
+
+          {/* 回收站工具行：全选 + 清空回收站 */}
+          {isTrash && rowCount > 0 && (
+            <div className="flex items-center gap-3 px-6 pt-3">
+              <Checkbox
+                isSelected={allTrashChecked}
+                onChange={toggleAllTrash}
+                data-testid="trash-select-all"
+                aria-label="全选回收站任务"
+              >
+                <Checkbox.Content>
+                  <Checkbox.Control>
+                    <Checkbox.Indicator />
+                  </Checkbox.Control>
+                </Checkbox.Content>
+              </Checkbox>
+              <span className="text-xs text-fg-subtle">全选</span>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="ml-auto text-fg-subtle hover:text-red-500"
+                onPress={() =>
+                  actions.openPurgeConfirm(tasks.filter((t) => t.deleted).map((t) => t.id))
+                }
+                data-testid="trash-clear"
+              >
+                清空回收站
+              </Button>
+            </div>
+          )}
+
+          {/* 回收站批量操作条：有勾选项时浮出 */}
+          {isTrash && trashSelected.size > 0 && (
+            <div
+              className="mx-6 mt-3 flex items-center gap-3 rounded-xl bg-red-50 px-3 py-2 dark:bg-red-500/10"
+              data-testid="trash-bulk-bar"
+            >
+              <span className="text-sm text-fg-muted">已选 {trashSelected.size} 项</span>
+              <Button
+                size="sm"
+                className="ml-auto bg-red-500 text-white hover:bg-red-600"
+                onPress={() => actions.openPurgeConfirm([...trashSelected])}
+                data-testid="trash-bulk-delete"
+              >
+                删除所选
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onPress={() => setTrashSelected(new Set())}
+                data-testid="trash-bulk-cancel"
+              >
+                取消
+              </Button>
+            </div>
+          )}
+
+          {showMonth ? (
+            <MonthView />
           ) : (
-            <>
-              {groups.map((group) => (
-                <Fragment key={group.key}>
-                  <li
-                    className="flex items-center gap-2 px-3 pb-1 pt-4 first:pt-1"
-                    data-testid={`group-${group.key}`}
-                  >
-                    <span className="text-xs font-medium text-zinc-400">{group.label}</span>
-                    <span className="text-xs text-zinc-300 dark:text-zinc-600">
-                      {group.nodes.length}
-                    </span>
-                  </li>
-                  {group.nodes.map(renderNode)}
-                </Fragment>
-              ))}
-              {completed.length > 0 && (
-                <>
-                  <li className="mt-4 px-3" data-testid="completed-section">
-                    <button
-                      className="flex w-full items-center gap-1.5 border-t border-zinc-200 pt-3 text-left text-xs font-medium text-zinc-400 transition hover:text-zinc-600 dark:border-zinc-800 dark:hover:text-zinc-200"
-                      onClick={toggleCompleted}
-                      data-testid="completed-toggle"
-                      aria-expanded={showCompleted}
+            <div className="relative mt-3 flex-1 min-h-0">
+              <div
+                className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-center text-xs text-fg-subtle transition-opacity"
+                style={{
+                  height: 48,
+                  opacity: phase === "idle" ? 0 : 1,
+                  transform: `translateY(${Math.max(0, pullPx - 48)}px)`,
+                }}
+                aria-hidden={phase === "idle"}
+                data-testid="pull-indicator"
+              >
+                {phase === "refreshing" ? (
+                  <span className="flex items-center gap-1.5">
+                    <svg
+                      viewBox="0 0 20 20"
+                      className="size-3.5 animate-spin"
+                      fill="none"
+                      aria-hidden
                     >
-                      <svg
-                        viewBox="0 0 12 12"
-                        className={`size-3 transition-transform ${showCompleted ? "rotate-90" : ""}`}
-                        fill="none"
-                        aria-hidden
-                      >
-                        <path
-                          d="M4 2.5L8 6l-4 3.5"
-                          stroke="currentColor"
-                          strokeWidth="1.4"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                      已完成 {completed.length}
-                    </button>
+                      <circle
+                        cx="10"
+                        cy="10"
+                        r="7.5"
+                        stroke="currentColor"
+                        strokeOpacity="0.25"
+                        strokeWidth="2"
+                      />
+                      <path
+                        d="M17.5 10a7.5 7.5 0 0 0-7.5-7.5"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    刷新中…
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1.5">
+                    <svg
+                      viewBox="0 0 20 20"
+                      className={`size-3.5 transition-transform ${phase === "ready" ? "rotate-180" : ""}`}
+                      fill="none"
+                      aria-hidden
+                    >
+                      <path
+                        d="M10 3.5v11M5.5 10L10 14.5 14.5 10"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    {phase === "ready" ? "松手刷新" : "下拉刷新"}
+                  </span>
+                )}
+              </div>
+              <ul
+                ref={listRef}
+                className="h-full space-y-0.5 overflow-y-auto overscroll-contain px-3 pb-8"
+                data-testid="task-list"
+                style={{
+                  transform: `translateY(${pullPx}px)`,
+                  transition:
+                    phase === "pulling" || phase === "ready" ? "none" : "transform 0.2s ease-out",
+                }}
+              >
+                {isTrash || searching ? (
+                  tree.map(renderNode)
+                ) : (
+                  <>
+                    {groups.map((group) => (
+                      <Fragment key={group.key}>
+                        <li
+                          className="flex items-center gap-2 px-3 pb-1 pt-4 first:pt-1"
+                          data-testid={`group-${group.key}`}
+                        >
+                          <span className="text-xs font-medium text-fg-subtle">{group.label}</span>
+                          <span className="text-xs text-fg-subtle/50 tabular-nums">
+                            {group.nodes.length}
+                          </span>
+                        </li>
+                        {group.nodes.map(renderNode)}
+                      </Fragment>
+                    ))}
+                    {completed.length > 0 && (
+                      <>
+                        <li className="mt-4 px-3" data-testid="completed-section">
+                          <button
+                            className="flex w-full items-center gap-1.5 border-t border-pw-border pt-3 text-left text-xs font-medium text-fg-subtle transition hover:text-fg"
+                            onClick={toggleCompleted}
+                            data-testid="completed-toggle"
+                            aria-expanded={showCompleted}
+                          >
+                            <svg
+                              viewBox="0 0 12 12"
+                              className={`size-3 transition-transform ${showCompleted ? "rotate-90" : ""}`}
+                              fill="none"
+                              aria-hidden
+                            >
+                              <path
+                                d="M4 2.5L8 6l-4 3.5"
+                                stroke="currentColor"
+                                strokeWidth="1.4"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                            已完成 {completed.length}
+                          </button>
+                        </li>
+                        {showCompleted && completed.map(renderNode)}
+                      </>
+                    )}
+                  </>
+                )}
+                {visibleCount === 0 && (
+                  <li
+                    className="flex flex-col items-center gap-3 pt-16 text-center text-sm text-fg-subtle"
+                    data-testid="empty-state"
+                  >
+                    <svg
+                      viewBox="0 0 48 48"
+                      className="size-12 text-fg opacity-20"
+                      fill="none"
+                      aria-hidden
+                    >
+                      <circle cx="24" cy="24" r="17" stroke="currentColor" strokeWidth="2" />
+                      <path
+                        d="M17 24.5l4.5 4.5L31 20"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    {search
+                      ? "没有匹配的任务"
+                      : isTrash
+                        ? "回收站是空的"
+                        : "这里空空如也，添加一个任务吧"}
                   </li>
-                  {showCompleted && completed.map(renderNode)}
-                </>
-              )}
-            </>
+                )}
+              </ul>
+            </div>
           )}
-          {visibleCount === 0 && (
-            <li className="pt-16 text-center text-sm text-zinc-400" data-testid="empty-state">
-              {search
-                ? "没有匹配的任务"
-                : isTrash
-                  ? "回收站是空的"
-                  : "这里空空如也，添加一个任务吧"}
-            </li>
-          )}
-        </ul>
         </div>
+      </div>
+
+      {/* compact 快速添加：仅在列表形态的存活视图挂载，宽屏由 CSS 隐藏 */}
+      {showQuickAdd && (
+        <button
+          type="button"
+          className="pw-fab size-14 items-center justify-center rounded-full bg-pw-accent-strong text-2xl leading-none text-white shadow-lg transition active:scale-95"
+          aria-label="新建任务"
+          data-testid="fab-add"
+          onClick={() => setPendingTitle("")}
+        >
+          +
+        </button>
       )}
+
       {pendingTitle !== null && (
         <QuickAddModal title={pendingTitle} onClose={() => setPendingTitle(null)} />
       )}
@@ -429,7 +460,7 @@ export function SyncBadge() {
   const s = map[status]!;
   return (
     <button
-      className="flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-1 py-0.5 text-xs text-zinc-400 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
+      className="flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-1 py-0.5 text-xs text-fg-subtle transition hover:bg-pw-hover"
       data-testid="sync-badge"
       title={`同步状态：${s.text}（点击查看详情）`}
       onClick={() => void actions.openSyncSheet()}

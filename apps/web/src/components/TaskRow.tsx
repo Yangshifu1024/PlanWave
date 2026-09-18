@@ -61,8 +61,8 @@ export function TaskRow(props: {
 
   return (
     <div
-      className={`group relative flex cursor-default items-center gap-3 rounded-xl px-3 py-2 transition ${
-        selected ? "bg-blue-50 dark:bg-blue-500/10" : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
+      className={`group relative flex cursor-default items-center gap-3 rounded-xl px-3 py-[var(--pw-row-y)] transition ${
+        selected ? "bg-pw-selected" : "hover:bg-pw-hover"
       } ${isSubtask ? "ml-9" : ""} ${
         showDivider
           ? "before:pointer-events-none before:absolute before:bottom-0 before:left-11 before:right-3 before:h-px before:bg-zinc-200/70 before:transition-opacity group-hover:before:opacity-0 dark:before:bg-zinc-800"
@@ -108,9 +108,9 @@ export function TaskRow(props: {
         <span
           className={`block truncate ${isSubtask ? "text-[13px]" : "text-sm"} ${
             task.completed || task.deleted
-              ? "text-zinc-400 line-through"
+              ? "text-fg-subtle line-through"
               : isSubtask
-                ? "text-zinc-500 dark:text-zinc-400"
+                ? "text-fg-muted"
                 : ""
           }`}
         >
@@ -119,7 +119,7 @@ export function TaskRow(props: {
         {(projectName ||
           (task.labels.length > 0 && !task.completed) ||
           (task.recurrence && !task.completed)) && (
-          <span className="flex items-center gap-1.5 text-xs text-zinc-400">
+          <span className="flex items-center gap-1.5 text-xs text-fg-subtle">
             {projectName && <span>{projectName}</span>}
             {task.recurrence && !task.completed && (
               <span className="flex items-center gap-0.5" title="重复任务">
@@ -137,7 +137,7 @@ export function TaskRow(props: {
 
       {progress && progress.total > 0 && (
         <button
-          className="flex shrink-0 cursor-pointer items-center text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+          className="flex shrink-0 cursor-pointer items-center text-xs text-fg-subtle hover:text-fg"
           title={collapsed ? "展开子任务" : "折叠子任务"}
           data-testid={`subtask-toggle-${task.title}`}
           onClick={(e) => {
@@ -174,10 +174,10 @@ export function TaskRow(props: {
         <span
           className={`shrink-0 text-xs ${
             due.tone === "overdue"
-              ? "text-red-500"
+              ? "text-pw-danger"
               : due.tone === "today"
-                ? "text-blue-500"
-                : "text-zinc-400"
+                ? "text-pw-accent"
+                : "text-fg-subtle"
           }`}
         >
           {due.text}
@@ -190,7 +190,7 @@ export function TaskRow(props: {
             size="sm"
             onPress={() => void actions.restoreTask(task.id)}
             data-testid={`restore-${task.title}`}
-            className="shrink-0 opacity-0 transition group-hover:opacity-100"
+            className="shrink-0 opacity-0 transition group-hover:opacity-100 coarse:opacity-100"
           >
             恢复
           </Button>
@@ -200,7 +200,7 @@ export function TaskRow(props: {
             onPress={() => actions.openPurgeConfirm([task.id])}
             data-testid={`purge-${task.title}`}
             aria-label="彻底删除"
-            className="shrink-0 text-zinc-400 opacity-0 transition hover:text-red-500 group-hover:opacity-100"
+            className="shrink-0 text-fg-subtle opacity-0 transition hover:text-red-500 group-hover:opacity-100 coarse:opacity-100"
           >
             彻底删除
           </Button>
@@ -218,7 +218,7 @@ export function TaskRow(props: {
             })
           }
           aria-label="移到回收站"
-          className="shrink-0 text-zinc-400 opacity-0 transition hover:text-red-500 group-hover:opacity-100"
+          className="shrink-0 text-fg-subtle opacity-0 transition hover:text-red-500 group-hover:opacity-100 coarse:opacity-100"
         >
           <svg viewBox="0 0 16 16" className="size-4" fill="none" aria-hidden>
             <path

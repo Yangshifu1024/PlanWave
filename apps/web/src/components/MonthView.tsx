@@ -15,7 +15,7 @@ import {
   type MonthDay,
 } from "../lib/monthGrid";
 import { projectDotClass } from "../lib/projectColors";
-import { useIsNarrow } from "../lib/useNarrowViewport";
+import { useCoarsePointer, useShellMode } from "../lib/useShellMode";
 import { useTaskDrag } from "../lib/useTaskDrag";
 import { PRIORITY_STYLE, REPEAT_ICON } from "./TaskRow";
 import { QuickAddModal } from "./QuickAddModal";
@@ -28,13 +28,17 @@ export function MonthView() {
   const projects = useApp((s) => s.projects);
   const view = useApp((s) => s.view);
   const unscheduledOpen = useApp((s) => s.unscheduledOpen);
-  const narrow = useIsNarrow();
+  // compact 或粗指针：格子用圆点 + 计数（点格打开当天浮层）
+  const shell = useShellMode();
+  const coarse = useCoarsePointer();
+  const dots = shell === "compact" || coarse;
   // 锚定「今天」：一次挂载内固定，避免每次渲染漂移
   const [now] = useState(() => new Date());
   const [anchor, setAnchor] = useState(() => ({ year: now.getFullYear(), month: now.getMonth() }));
   // 非空 = 打开新建弹框（标题 + 预填截止日期）
   const [pending, setPending] = useState<{ title: string; dueDate: number } | null>(null);
   const [overlayKey, setOverlayKey] = useState<string | null>(null);
+  const [unscheduledSheet, setUnscheduledSheet] = useState(false);
   const [showCompleted] = useState(
     () => localStorage.getItem("planwave.ui.showCompleted") === "true",
   );
@@ -81,7 +85,7 @@ export function MonthView() {
     return (
       <div
         key={task.id}
-        className={`flex w-full items-center gap-1 rounded px-1 py-0.5 transition hover:bg-zinc-200/70 dark:hover:bg-zinc-700/70 ${
+        className={`flex w-full items-center gap-1 rounded px-1 py-0.5 transition hover:bg-pw-hover ${
           drag.draggingId === task.id ? "opacity-60 shadow-lg" : ""
         }`}
       >
@@ -106,20 +110,16 @@ export function MonthView() {
           data-task-title={task.title}
           {...drag.chipProps(task)}
           className={`flex min-w-0 flex-1 cursor-grab items-center gap-1 text-left text-[11px] leading-tight ${
-            task.completed
-              ? "text-zinc-400 line-through"
-              : overdue
-                ? "text-red-500"
-                : "text-zinc-700 dark:text-zinc-200"
+            task.completed ? "text-fg-subtle line-through" : overdue ? "text-pw-danger" : "text-fg"
           }`}
         >
           {priority && <span className={`size-1.5 shrink-0 rounded-full ${priority.dot}`} />}
           <span className={`size-1.5 shrink-0 rounded-full ${colorOf(task.project_id)}`} />
           <span className="truncate">{task.title}</span>
           {task.recurrence && !task.completed && (
-            <span className="shrink-0 text-zinc-400">{REPEAT_ICON}</span>
+            <span className="shrink-0 text-fg-subtle">{REPEAT_ICON}</span>
           )}
-          {time && <span className="ml-auto shrink-0 text-[10px] text-zinc-400">{time}</span>}
+          {time && <span className="ml-auto shrink-0 text-[10px] text-fg-subtle">{time}</span>}
         </button>
       </div>
     );
@@ -131,11 +131,11 @@ export function MonthView() {
       data-testid={`month-day-${day.key}`}
       data-drop-key={day.key}
       onClick={() => {
-        if (narrow) setOverlayKey(day.key);
+        if (dots) setOverlayKey(day.key);
         else setPending({ title: "", dueDate: day.date.getTime() });
       }}
-      className={`flex min-h-[76px] cursor-pointer flex-col gap-0.5 border-b border-r border-zinc-200 p-1 transition sm:min-h-[96px] dark:border-zinc-800 ${
-        day.inMonth ? "bg-white dark:bg-zinc-900" : "bg-zinc-50 dark:bg-zinc-900/40"
+      className={`pw-month-cell flex cursor-pointer flex-col gap-0.5 border-b border-r border-pw-border p-1 transition ${
+        day.inMonth ? "bg-pw-surface" : "bg-pw-surface-2"
       } ${drag.overKey === day.key ? "ring-2 ring-inset ring-blue-400" : ""}`}
     >
       <div className="flex items-center justify-between px-0.5">
@@ -144,19 +144,19 @@ export function MonthView() {
             day.isToday
               ? "flex size-5 items-center justify-center rounded-full bg-blue-500 font-semibold text-white"
               : day.inMonth
-                ? "text-zinc-500 dark:text-zinc-400"
-                : "text-zinc-300 dark:text-zinc-600"
+                ? "text-fg-muted"
+                : "text-fg-subtle/60"
           }`}
         >
           {day.day}
         </span>
-        {narrow && day.tasks.length > 0 && (
-          <span className="text-[10px] text-zinc-400" data-testid={`month-day-count-${day.key}`}>
+        {dots && day.tasks.length > 0 && (
+          <span className="text-[10px] text-fg-subtle" data-testid={`month-day-count-${day.key}`}>
             {day.tasks.length}
           </span>
         )}
       </div>
-      {narrow ? (
+      {dots ? (
         <div className="flex flex-wrap gap-0.5 px-0.5">
           {day.tasks.slice(0, MONTH_CELL_MAX).map((t) => (
             <span key={t.id} className={`size-1.5 rounded-full ${colorOf(t.project_id)}`} />
@@ -173,7 +173,7 @@ export function MonthView() {
                 e.stopPropagation();
                 setOverlayKey(day.key);
               }}
-              className="rounded px-1 text-left text-[11px] text-zinc-400 transition hover:text-blue-500"
+              className="rounded px-1 text-left text-[11px] text-fg-subtle transition hover:text-blue-500"
             >
               +{day.overflow} 更多
             </button>
@@ -240,13 +240,27 @@ export function MonthView() {
         </div>
       </div>
 
+      {/* compact/平板（<lg）：未排期入口，桌面抽屉由 CSS 在 lg 以上显示 */}
+      {unscheduled.length > 0 && (
+        <div className="px-4 pt-2 sm:px-6 lg:hidden">
+          <button
+            type="button"
+            data-testid="unscheduled-sheet-open"
+            onClick={() => setUnscheduledSheet(true)}
+            className="cursor-pointer text-xs font-medium text-fg-muted transition hover:text-fg"
+          >
+            未排期（{unscheduled.length}）
+          </button>
+        </div>
+      )}
+
       <div className="flex min-h-0 flex-1 gap-3 px-3 pb-3 pt-3 sm:px-6 sm:pb-4">
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
-          <div className="grid grid-cols-7 overflow-hidden rounded-xl border-l border-t border-zinc-200 dark:border-zinc-800">
+          <div className="grid grid-cols-7 overflow-hidden rounded-xl border-l border-t border-pw-border">
             {WEEKDAY_LABELS.map((w) => (
               <div
                 key={w}
-                className="border-b border-r border-zinc-200 bg-zinc-50 px-2 py-1 text-center text-xs font-medium text-zinc-400 dark:border-zinc-800 dark:bg-zinc-900/60"
+                className="border-b border-r border-pw-border bg-pw-surface-2 px-2 py-1 text-center text-xs font-medium text-fg-subtle"
               >
                 {w}
               </div>
@@ -270,6 +284,15 @@ export function MonthView() {
           projects={projects}
           onClose={() => setOverlayKey(null)}
           onAdd={() => setPending({ title: "", dueDate: overlayDay.date.getTime() })}
+        />
+      )}
+      {unscheduledSheet && (
+        <DayTasksOverlay
+          testId="unscheduled-sheet"
+          title={`未排期${unscheduled.length > 0 ? `（${unscheduled.length}）` : ""}`}
+          tasks={unscheduled}
+          projects={projects}
+          onClose={() => setUnscheduledSheet(false)}
         />
       )}
       {pending && (

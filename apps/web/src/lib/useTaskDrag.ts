@@ -1,6 +1,11 @@
 //! 任务条目拖拽（Pointer Events）：位移 > 4px 判定为拖拽，否则松手视为点击。
 
-import { useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import type { TaskRecord } from "../types";
 
 export const DRAG_START_PX = 4;
@@ -43,7 +48,10 @@ export function useTaskDrag(opts: {
 
   const chipProps = (task: TaskRecord): TaskChipHandlers => ({
     onPointerDown: (e) => {
-      if (e.pointerType === "mouse" && e.button !== 0) return;
+      // 拖拽改期仅限鼠标：触屏/触控笔不启动拖拽（点击仍经 onClick 打开详情），
+      // 与产品预期「移动端不做拖拽」一致，也避免与滚动争抢手势。
+      if (e.pointerType !== "mouse") return;
+      if (e.button !== 0) return;
       start.current = { x: e.clientX, y: e.clientY, id: task.id, active: false };
       suppressClick.current = false;
       try {
